@@ -23,7 +23,7 @@ jobs:
       # Windows 宿主：oh-flutter 官方仅提供 windows/darwin 的定制 dart-sdk
       # （含 Abi.ohosArm 扩展，编译 flutter_tools 必需），Linux 无法引导
       - name: Setup HarmonyOS toolchain
-        uses: ErBWs/setup-ohos@v1
+        uses: ErBWs/setup-ohos@main
         with:
           version: latest
           cache: true
