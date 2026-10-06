@@ -198,7 +198,7 @@ jobs:
 
       - name: Download local Windows packages
         if: ${{ inputs.windows_source == 'self-hosted' }}
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v7.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v7.0.1
         with:
           name: pure-live-windows-release
           path: downloads/windows
@@ -221,7 +221,7 @@ jobs:
 
       - name: Download signed Android package
         if: ${{ inputs.android_source == 'workflow-artifact' }}
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v7.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v7.0.1
         with:
           name: pure-live-android
           path: downloads/android
@@ -241,7 +241,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY"
 
       - name: Download staged Linux package
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v7.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v7.0.1
         with:
           name: pure-live-linux-x64
           path: downloads/linux
@@ -249,7 +249,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Download staged macOS packages
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v7.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v7.0.1
         with:
           name: pure-live-macos
           path: downloads/macos
@@ -257,7 +257,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Download staged iOS package
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v7.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v7.0.1
         with:
           name: pure-live-ios
           path: downloads/ios

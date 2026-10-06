@@ -18,24 +18,24 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Windows 宿主：oh-flutter 官方仅提供 windows/darwin 的定制 dart-sdk
       # （含 Abi.ohosArm 扩展，编译 flutter_tools 必需），Linux 无法引导
       - name: Setup HarmonyOS toolchain
-        uses: ErBWs/setup-ohos@v1
+        uses: ErBWs/setup-ohos@v2
         with:
           version: latest
           cache: true
 
       - name: Setup JDK17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: "17"
           distribution: "temurin"
 
       - name: Cache flutter-ohos SDK
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/flutter
           key: ohflutter-3.47.4-dev-win
@@ -134,7 +134,7 @@ jobs:
         shell: bash
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pure_live_ohos
           path: pure_live_ohos_debug_unsigned.hap

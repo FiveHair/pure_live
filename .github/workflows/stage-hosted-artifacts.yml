@@ -83,7 +83,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Download selected workflow artifact
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v7.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v7.0.1
         with:
           name: ${{ inputs.artifact_name }}
           path: staged
