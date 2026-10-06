@@ -17,6 +17,12 @@ analyzer:
     # Vendored upstream package (Predidit/media-kit@803c4a27); analyzed upstream.
     - third_party/media_kit/**
     - third_party/fvp/**
+    # Vendored pub packages with TargetPlatform.ohos patches; analyzed upstream.
+    - third_party/material_ui/**
+    - third_party/cupertino_ui/**
+    - third_party/syncfusion_flutter_sliders/**
+    - third_party/flex_color_picker/**
+    - third_party/ffmpeg_kit_extended_flutter/**
     - android/**
     - ios/**
     - web/**

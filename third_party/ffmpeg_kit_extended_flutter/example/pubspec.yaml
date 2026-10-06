@@ -1,0 +1,46 @@
+name: ffmpeg_kit_extended_flutter_example
+description: "Demonstrates how to use the ffmpeg_kit_extended_flutter plugin."
+repository: https://github.com/akashskypatel/ffmpeg-kit-extended
+issue_tracker: https://github.com/akashskypatel/ffmpeg-kit-extended/issues
+homepage: https://github.com/akashskypatel/ffmpeg-kit-extended
+publish_to: "none"
+version: 0.6.2+1
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  ffmpeg_kit_extended_flutter:
+    path: ../
+
+  cupertino_icons: ^1.0.9
+  path: ^1.9.1
+  file_picker: ^12.0.0
+  android_media_store: ^0.0.4
+  permission_handler: ^13.0.1
+  path_provider: ^2.1.6
+  window_manager: ^0.5.2
+
+dev_dependencies:
+  integration_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  config:
+    enable-swift-package-manager: true
+  uses-material-design: true
+
+ffmpeg_kit_extended_config:
+  type: "debug"
+  gpl: true
+  small: false
+  # macos: "/Users/akash/Projects/ffmpeg-kit-builders/prebuilt/apple/xcframeworks/bundle-video-macos-universal-gpl.xcframework.zip"
+  # ios: "/Users/akash/Projects/ffmpeg-kit-builders/prebuilt/apple/xcframeworks/bundle-video-ios-universal-gpl.xcframework.zip"
+  # windows: "\\\\wsl.localhost\\ManyLinux\\home\\vscode\\ffmpeg-kit-builders\\prebuilt\\windows-x86_64\\releases\\bundle-video-windows-x86_64-shared-gpl.zip"
+  # linux: "/home/vscode/ffmpeg-kit-builders/prebuilt/linux-x86_64/releases/bundle-video-linux-x86_64-shared-gpl.zip"
+  # android: "\\\\wsl.localhost\\ManyLinux\\home\\vscode\\ffmpeg-kit-builders\\tools\\android\\build\\outputs\\aar\\bundle-video-shared-gpl-release.aar"

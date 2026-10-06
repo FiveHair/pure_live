@@ -66,3 +66,11 @@ app.*.map.json
 # FVM Version Cache
 .fvm/
 **/.make_config.yaml
+
+# ohos 构建产物与镜像（hvigorw.bat 运行时生成）
+ohos/build-tools/
+ohos/entry/libs/
+ohos/node_modules/
+ohos/package.json
+ohos/package-lock.json
+ohos/.hvigor/

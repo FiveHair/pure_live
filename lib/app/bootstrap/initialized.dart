@@ -55,6 +55,8 @@ class AppInitializer {
     if (_isInitialized) return;
 
     WidgetsFlutterBinding.ensureInitialized();
+    // 鸿蒙设备形态识别（2in1 等 PC 形态对齐桌面交互，手机/平板对齐移动端）
+    await PlatformUtils.initOhosDeviceType();
     configureDecodedImageCache(desktop: PlatformUtils.isDesktop);
     final String instanceId = WindowsMultiInstanceLauncher.instanceIdFromArgs(args);
     // 一次性交接放在 Core，Features 读它时不必反向认识 App。

@@ -1,3 +1,5 @@
+import 'package:pure_live/core/platform/platform_utils.dart';
+
 import 'dart:io';
 import 'dart:convert';
 import 'dart:developer' as developer;
@@ -82,6 +84,10 @@ class FirebaseManager {
   }
 
   Future<void> _initializeOnce() async {
+    // 鸿蒙端无 Firebase 实现（插件未适配），直接视为不可用
+    if (PlatformUtils.isOhos) {
+      throw UnsupportedError('Firebase is not available on ohos');
+    }
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
     await registerWindowsCustomScheme(customScheme, description: 'PureLive Authentication Callback');
   }

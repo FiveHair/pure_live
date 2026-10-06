@@ -61,7 +61,7 @@ dependencies:
   # 新增的宿主撤回接口 `BarrageController.retractWhere`（弹幕撤回要按条撤下已上屏
   # 的消息），pub.dev 上的 0.0.8 还没有这个接口。
   flame_barrage:
-    path: E:/software/flame_barrage
+    path: D:/DEV/flame_barrage
 
   # Keep this exact: 0.6.2 preserves argv through FFmpeg/FFprobe/FFplay.
   # Platform URL overrides below select our verified FFmpeg 9.0.2 bundles;
@@ -116,35 +116,35 @@ dependencies:
   # (media_core 未覆盖的独立工具包)。
   wakelock_plus: ^1.3.3 # 与 media_core_media_kit 的引擎依赖链对齐
   media_core:
-    path: F:/media_core/packages/media_core
+    path: D:/DEV/media_core/packages/media_core
   media_core_media_kit:
-    path: F:/media_core/packages/media_core_media_kit
+    path: D:/DEV/media_core/packages/media_core_media_kit
   media_core_ui:
-    path: F:/media_core/packages/media_core_ui
+    path: D:/DEV/media_core/packages/media_core_ui
   media_core_pip:
-    path: F:/media_core/packages/media_core_pip
+    path: D:/DEV/media_core/packages/media_core_pip
   media_core_fullscreen:
-    path: F:/media_core/packages/media_core_fullscreen
+    path: D:/DEV/media_core/packages/media_core_fullscreen
   media_core_multiview:
-    path: F:/media_core/packages/media_core_multiview
+    path: D:/DEV/media_core/packages/media_core_multiview
   media_core_ingest:
-    path: F:/media_core/packages/media_core_ingest
+    path: D:/DEV/media_core/packages/media_core_ingest
   media_core_presentation:
-    path: F:/media_core/packages/media_core_presentation
+    path: D:/DEV/media_core/packages/media_core_presentation
   media_core_floating:
-    path: F:/media_core/packages/media_core_floating
+    path: D:/DEV/media_core/packages/media_core_floating
   media_core_ijk_player:
-    path: F:/media_core/packages/media_core_ijk_player
+    path: D:/DEV/media_core/packages/media_core_ijk_player
   media_core_better_player:
-    path: F:/media_core/packages/media_core_better_player
+    path: D:/DEV/media_core/packages/media_core_better_player
   media_core_danmaku:
-    path: F:/media_core/packages/media_core_danmaku
+    path: D:/DEV/media_core/packages/media_core_danmaku
   media_core_mediasession:
-    path: F:/media_core/packages/media_core_mediasession
+    path: D:/DEV/media_core/packages/media_core_mediasession
   media_core_live:
-    path: F:/media_core/packages/media_core_live
+    path: D:/DEV/media_core/packages/media_core_live
   media_core_logging:
-    path: F:/media_core/packages/media_core_logging
+    path: D:/DEV/media_core/packages/media_core_logging
 
   # -------------------------- 数据存储/数据库 --------------------------
   hive_ce: ^2.20.0 # Hive本地数据库
@@ -207,6 +207,38 @@ dependencies:
 
 # 依赖覆盖（强制指定版本）
 dependency_overrides:
+  # 鸿蒙移植：本地 flame_barrage（pub 0.0.8 缺宿主撤回接口）
+  flame_barrage:
+    path: D:/DEV/flame_barrage
+  # 鸿蒙移植：Predidit media-kit 本地副本（ohos sysroot 补丁版，
+  # 基于 media_core 锁定的同一 commit 803c4a2）
+  media_kit:
+    path: D:/DEV/media-kit-predidit/media_kit
+  media_kit_video:
+    path: D:/DEV/media-kit-predidit/media_kit_video
+  # 鸿蒙移植：ffmpeg_kit 空实现（官方产物不支持 ohos，录制功能暂缺）
+  ffmpeg_kit_extended_flutter:
+    path: third_party/ffmpeg_kit_extended_flutter
+  # 鸿蒙移植：vendor 包（TargetPlatform.ohos 穷举 switch 修复版）
+  material_ui:
+    path: third_party/material_ui
+  cupertino_ui:
+    path: third_party/cupertino_ui
+  syncfusion_flutter_sliders:
+    path: third_party/syncfusion_flutter_sliders
+  flex_color_picker:
+    path: third_party/flex_color_picker
+  # 鸿蒙基础插件（CPF 适配版，与 oh-flutter 3.47 兼容）
+  path_provider:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_packages.git
+      path: packages/path_provider/path_provider
+      ref: br_path_provider-v2.1.5_ohos
+  path_provider_ohos:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_packages.git
+      path: packages/path_provider/path_provider_ohos
+      ref: br_path_provider-v2.1.5_ohos
   # media_kit 链与 better_player_plus 对 wakelock_plus 的约束无交集,
   # 与 media_core 工作区同样以 override 对齐
   wakelock_plus: ^1.7.0

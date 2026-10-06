@@ -1,0 +1,846 @@
+# RydMike LINTER Preferences v3.0.0
+#
+# Get this file here: https://gist.github.com/rydmike/fdb53ddd933c37d20e6f3188a936cd4c
+#
+# We include and activate all_lint_rules, then below we disable the not used or desired ones.
+# You can find a list of all lint rules to put in your all_lint_rules.yaml file here:
+# https://dart.dev/tools/linter-rules/all
+#
+# This version is updated for Flutter 3.47 and Dart 3.13.
+#
+# This file holds everything that is a style decision: the "all rules on" import,
+# the rules we deliberately turn back off, the strict language modes, the severity
+# escalations, and the line width. 
+#
+# Editing guidance: a rule is either on because `all_lint_rules.yaml` turns
+# everything on, or off with a comment below saying why. Do not add a rule here
+# to turn it *on*; that is already the default.
+
+# Enable all lint rules
+include: all_lint_rules.yaml
+
+# Describes how Dart formatter should behave on project level.
+#
+# Must use min Dart 3.8.0 for trailing_commas and min 3.7.0 for page_width.
+formatter:
+  # Strongly recommended to preserve trailing commas as written and not let formatter mess with them.
+  # See https://github.com/dart-lang/dart_style/issues/1652
+  # Not using this setting contradicts the
+  # - require_trailing_commas: false
+  # linter rule and removes the ability to force line breaks.
+  # The preserve trailing commas option is still a bit weak and messes with them anyway.
+  trailing_commas: preserve
+  # We like our lines a bit longer than default dart format 80 chars and use 120 chars.
+  page_width: 120
+
+analyzer:
+  exclude:
+    # for riverpod, json_serializable
+    - "**/*.g.dart"
+    # for freezed
+    - "**/*.freezed.dart"
+    # Other generated files we may encounter.
+    - "**/*.gr.dart"
+    - "**/*.mocks.dart"
+    - "lib/generated/**"
+    - "test/.test_coverage.dart"
+    - "bin/cache/**"
+    - "lib/generated_plugin_registrant.dart"
+    # Swift Package Manager plugin checkouts and other build outputs (not project source).
+    - "build/**"
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
+
+  # For more information see: https://dart.dev/tools/analysis
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+
+  errors:
+    # Without ignore here, we cause import of all_lint_rules to warn, because some rules conflict.
+    # We explicitly enable conflicting rules and are fixing the conflicts in this file.
+    # Put it to warning temporarily if you need to troubleshoot lint rule conflicts.
+    included_file_warning: ignore
+
+    # False positive for json_serializable and freezed. Added in v3.0.0 of this file.
+    invalid_annotation_target: ignore
+
+    # Treat missing required parameters as an error, not as a hint or a warning.
+    missing_required_param: error
+
+    # Treat missing returns as an error, not as a hint or a warning.
+    missing_return: error
+
+    # A record literal with exactly one positional field requires a trailing comma.
+    record_literal_one_positional_no_trailing_comma: error
+
+    # Invocation collection methods with arguments of unrelated types.
+    collection_methods_unrelated_type: warning
+
+    # Invocation of equality operator == with references of unrelated types.
+    unrelated_type_equality_checks: warning
+
+    # DON'T assign new values to parameters of methods or functions.
+    #
+    # https://dart.dev/tools/linter-rules/parameter_assignments.html
+    #
+    # Treats assigning new values to a parameter as a warning. We can consider setting  this
+    # to an error too considering the comment in:
+    # https://dart.dev/tools/linter-rules/parameter_assignments.html:
+    # "Assigning new values to parameters is generally a bad practice unless an operator
+    # such as ??= is used. Otherwise, arbitrarily reassigning parameters is usually a mistake."
+    # One might even think the rule would allow using the ??= operator, but it does not. For now,
+    # we keep this lint as warning and adding a documented ignore lint when needed.
+    # require it, that we don't want to deal with fixing at the moment.
+    parameter_assignments: warning
+
+    # Allow having TODOs in the code.
+    todo: ignore
+
+# LINTER Preferences
+#
+# Explicitly disable only the rules we do not want or those that represent a choice and conflict
+# conflict with each other. If we don't care about some conflicting style lints, we disable both 
+# and allow both styles.
+#
+# These are the versions used for the "Other known linters use" comparisons below.
+# Refreshed 2026-08-21. Each value is the *effective* setting after following that
+# config's include chain, not just what its top-level file lists.
+#
+# Core           v6.1.0     : https://pub.dev/packages/lints
+# Recommended    v6.1.0     : https://pub.dev/packages/lints
+# Flutter Lints  v6.0.0     : https://pub.dev/packages/flutter_lints
+# Flutter repo   master     : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+# Lint (strict)  v2.8.0     : https://pub.dev/packages/lint
+# VG Analysis    v10.3.0    : https://pub.dev/packages/very_good_analysis
+# Riverpod/Remi  v3.4.2     : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+#
+# Two of these track a moving branch rather than a release, so the rule-bearing file is stamped instead of the branch 
+# head: Flutter's `analysis_options_common.yaml` at a92b9520 (2026-07-29) -- the rules moved out of 
+#`analysis_options.yaml` into that file and
+# Riverpod's `analysis_options_without_plugins.yaml` at c8c9dd24 (2025-12-15).
+#
+# Worth knowing when reading the Riverpod column: Riverpod uses the same "enable everything, then turn a few off" 
+# model this file does, so it reads `true` for most rules.
+#
+# What other's do with rules we turn OFF, is just something we thought would be interesting to see and know.
+# All still just preferences and use case needs. The comments below also explain why we do not use
+# the lint rule in question, which is more useful information.
+#
+# Version 3.0.0 of this file changes from previous version:
+#
+# Disabled (added as false):
+# - always_specify_types
+# - avoid_catches_without_on_clauses
+# - lines_longer_than_80_chars
+# - prefer_initializing_formals
+# - prefer_relative_imports
+# - simplify_variable_pattern
+#
+# Re-enabled (removed from false):
+# - always_use_package_imports
+#
+# Removed due to deprecation:
+# - prefer_final_parameters
+# Also manually removed for all lints list.
+#
+# The big change is no longer requiring to always specify type
+# and moving from from relative to all package style imports.
+linter:
+  rules:
+    # ALWAYS separate the control structure expression from its statement.
+    #
+    # https://dart.dev/tools/linter-rules/always_put_control_body_on_new_line.html
+    #
+    # This sometimes makes things more unclear when one line is enough. Also, single line if:s are
+    # fine and also recommended in Effective Dart "DO format your code using dart format".
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   true  : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    always_put_control_body_on_new_line: false
+
+    # ALWAYS specify required named parameter before other named parameters.
+    #
+    # https://dart.dev/tools/linter-rules/always_put_required_named_parameters_first.html
+    #
+    # Conflicts with the convention used by Flutter, which puts `Key key` first
+    # and `Widget child` last.
+    #
+    # Other known linters use:
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    always_put_required_named_parameters_first: false
+
+    # ALWAYS specify type annotations.
+    #
+    # https://dart.dev/tools/linter-rules/always_specify_types.html
+    #
+    # Avoid var when specifying that a type is unknown and short-hands that elude type annotations. Use
+    # dynamic if you are being explicit that the type is unknown. Use Object if you are being explicit
+    # that you want an object that implements == and hashCode.
+    #
+    # The linter rule link above states this rule is from the Flutter style guide. But Flutter repo has
+    # moved away from using this rule since (Flutter 3.40 and later, only in master at time of writing).
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    always_specify_types: false
+
+    # AVOID annotating with dynamic when not required.
+    #
+    # https://dart.dev/tools/linter-rules/avoid_annotating_with_dynamic.html
+    #
+    # Violates Effective Dart "PREFER annotating with dynamic instead of letting inference fail", it
+    # also conflicts with strong mode disabling `implicit-dynamic` and with `always_specify_types`
+    # Turning it OFF.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    avoid_annotating_with_dynamic: false
+
+    # AVOID catches without on clauses.
+    #
+    # https://dart.dev/tools/linter-rules/avoid_catches_without_on_clauses.html
+    #
+    # Using catch clauses without on clauses makes your code prone to encountering unexpected
+    # errors that won't be thrown (and thus will go unnoticed). However, there are situations
+    # where we may want to catch everything, see:
+    # - https://github.com/dart-lang/linter/issues/3023 and
+    # - https://github.com/dart-lang/sdk/issues/57128
+    #
+    # The main issue above has been resolved and closed, so the rule is now enabled
+    # starting in version 2.3.0. But if you still want to disable it, you can do so here.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    avoid_catches_without_on_clauses: false
+
+    # AVOID defining a class that contains only static members.
+    #
+    # https://dart.dev/tools/linter-rules/avoid_classes_with_only_static_members.html
+    #
+    # Creating classes with the sole purpose of providing utility, or otherwise static methods, is
+    # discouraged in effective Dart. Dart allows functions to exist outside of classes for this
+    # very reason. Effective Dart says avoid classes with only static members:
+    # https://dart.dev/guides/language/effective-dart/design#avoid-defining-a-class-that-contains-only-static-members
+    #
+    # However, the Flutter style guide says use them when it makes sense:
+    # https://github.com/flutter/flutter/wiki/Style-guide-for-Flutter-repo#begin-global-constant-names-with-prefix-k
+    # Colors is an example of such a class.
+    #
+    # We like util and static classes, so we use them.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           true  : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    avoid_classes_with_only_static_members: false
+
+    # AVOID declaring parameters as final.
+    #
+    # https://dart.dev/tools/linter-rules/avoid_final_parameters.html
+    #
+    # Declaring parameters as final can lead to unnecessarily verbose code,
+    # especially when using the "parameter_assignments" rule.
+    #
+    # This rule is turned off, so we can define final parameters when it makes
+    # sense to do so without triggering a lint rule.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   true  : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           true  : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    avoid_final_parameters: false
+
+    # AVOID positional boolean parameters.
+    #
+    # https://dart.dev/tools/linter-rules/avoid_positional_boolean_parameters.html
+    #
+    # Positional boolean parameters are considered a bad practice because they are very ambiguous.
+    # Using named boolean parameters is much more readable because it inherently describes
+    # what the boolean value represents.
+    #
+    # In principle, we agree with the argument against positional booleans. However, positional booleans
+    # are OK when they are the ONLY boolean parameter in a callback, and also very handy when used in a
+    # model setter from the callback directly.
+    #
+    # Flutter API contains many callbacks with the signature: {void Function(bool) onChanged} often
+    # for UI toggle switches. To keep things tidy and clean with a model setter for such a callback,
+    # a setter method with a positional boolean is needed, a typical pattern is:
+    # Switch.adaptive(
+    #   value: model.hideTooltips,
+    #   onChanged: model.setHideTooltips,
+    # ),
+    #
+    # We turn OFF this AVOID rule.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    avoid_positional_boolean_parameters: false
+
+    # AVOID redundant argument values.
+    #
+    # https://dart.dev/tools/linter-rules/avoid_redundant_argument_values.html
+    #
+    # Using redundant (default) argument values can be useful for in-code documentation
+    # purposes and also handy as a template when trying different settings in Flutter. It is often
+    # quicker when dealing with not well-known APIs to see parameter values in the call/constructor,
+    # instead of using the IDE to peek into its default to figure out what the defaults are.
+    #
+    # Occasionally, leaving a few redundant default valued parameters in the code is not bad.
+    # We turn OFF this rule.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   true  : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           true  : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    avoid_redundant_argument_values: false
+
+    # AVOID annotating types for function expression parameters.
+    #
+    # https://dart.dev/tools/linter-rules/avoid_catches_without_on_clauses.html
+    #
+    # Annotating types for function expression parameters is usually unnecessary because the
+    # parameter types can almost always be inferred from the context, thus making the practice redundant.
+    #
+    # We prefer keeping this rule OFF.
+    # While always specifying the type on callbacks is certainly a bit tedious and not necessary,
+    # it can sometimes improve readability, so let's not force them to NOT be allowed.
+    # Thus, even if we do not use `always_specify_types`, it is possible to sometimes specify
+    # types on closures, when it improves the readability of unfamiliar closures.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    avoid_types_on_closure_parameters: false
+
+    # DO Use the cascading style when successively invoking methods on the same reference.
+    #
+    # https://dart.dev/tools/linter-rules/cascade_invocations.html
+    #
+    # We disable this rule, just a team preference, using them is fine though,
+    # but let's not enforce using them.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    cascade_invocations: false
+
+    # DO invoke close on instances of dart.core.Sink.
+    #
+    # https://dart.dev/tools/linter-rules/close_sinks.html
+    #
+    # Disabling it. Can generate false positives: https://github.com/dart-lang/linter/issues/1381.
+    # Remi seems to be using it now. We probably don't have any issue with this even if we put it ON.
+    # We can consider keeping it ON too.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    close_sinks: false
+
+    # AVOID using deprecated elements from within the package in which they are declared.
+    #
+    # https://dart.dev/tools/linter-rules/deprecated_member_use_from_same_package
+    #
+    # Elements that are annotated with @Deprecated should not be referenced from within the
+    # package in which they are declared.
+    #
+    # In packages and especially in public packages, it is often useful to deprecate a
+    # member, but keep it available and functional until the deprecated member is completely
+    # removed. In those cases we need to reference it in code and doc comments.
+    #
+    # We turn OFF this rule, an allow using deprecated elements internally.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    deprecated_member_use_from_same_package: false
+
+    # DO reference all public properties in debug method implementations.
+    #
+    # https://dart.dev/tools/linter-rules/diagnostic_describe_all_properties.html
+    #
+    # Consider using this lint rule if you are making a public Flutter package.
+    # For private ones and private apps we recommend keeping it off as you probably
+    # won't be making diagnostic properties for all your
+    # classes, unless you are using a data class lib that does it for you via code generation.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    # 
+    # We use this for packages but turn it OFF/false in apps.
+    diagnostic_describe_all_properties: false
+
+    # DO NOT use environment declared variables.
+    #
+    # https://dart.dev/tools/linter-rules/do_not_use_environment
+    #
+    # Using values derived from the environment at compile-time, creates hidden global state
+    # and makes applications hard to understand and maintain.
+    # DON’T use fromEnvironment or hasEnvironment factory constructors.
+    #
+    # There are appropriate times to use the environment, e.g. in tests and build logic, we turn this OFF.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    do_not_use_environment: false
+
+    # AVOID lines longer than 80 characters
+    #
+    # https://dart.dev/tools/linter-rules/lines_longer_than_80_chars.html
+    #
+    # With the new formatter options usable in analysis_options, we can now use other
+    # line lengths, we do set this to false.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    lines_longer_than_80_chars: false
+
+    # DO use super parameter names that match their corresponding super constructor’s
+    # parameter names.
+    #
+    # https://dart.dev/tools/linter-rules/matching_super_parameters
+    #
+    # Blocked by issue: https://github.com/dart-lang/language/issues/2509 and
+    # https://github.com/dart-lang/language/issues/4462
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    matching_super_parameters: false
+
+    # CONSIDER omitting type annotations for local variables.
+    #
+    # https://dart.dev/tools/linter-rules/omit_local_variable_types.html
+    #
+    # Conflicts with 'always_specify_types', we do not use this, but we like to when it is useful 
+    # be able to add type info on locals, be specific if useful, is our take on it.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    omit_local_variable_types: false
+
+    # CONSIDER omitting obvious type annotations for local variables.
+    #
+    # https://dart.dev/tools/linter-rules/omit_obvious_local_variable_types
+    #
+    # Conflicts with 'always_specify_types', we do not use this, but we like to when it is useful 
+    # be able to add type info on variables, be specific if and when it is useful, is our take on it.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   true  : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    omit_obvious_local_variable_types: false
+
+    # CONSIDER omitting obvious type annotations for top-level and static variables.
+    #
+    # https://dart.dev/tools/linter-rules/omit_obvious_property_types
+    #
+    # Conflicts with 'always_specify_types', we do not use this, but we like to when it is useful 
+    # be able to add type info on properties, be specific if and when it is useful, is our take on it.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    omit_obvious_property_types: false
+
+    # PREFER to define constructors, instead of static methods to create instances.
+    #
+    # https://dart.dev/tools/linter-rules/prefer_constructors_over_static_methods.html
+    #
+    # Dart has named constructors. Static methods in other languages (java) are a workaround to
+    # not having named constructors.
+    #
+    # We don't mind this lint rule, it is OK, BUT if you want/need to create instances of classes via 
+    # static helpers in another class, this lint rules complains about it.
+    #
+    # We are OK with preferring a named constructor over a static method to create an instance from 
+    # within the same class. However, this lint rule complained about the above usage too, where we 
+    # think it makes sense to use a static method.
+    #
+    # A past now resolved issue with this lint rule was: https://github.com/dart-lang/linter/issues/2149
+    #
+    # At the moment our code base don't not have any issues if we keep this rule enabled, so we can
+    # also consider keeping it ON.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           true  : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    prefer_constructors_over_static_methods: false
+
+    # DO use double quotes where they wouldn't require additional escapes.
+    #
+    # https://dart.dev/tools/linter-rules/prefer_double_quotes.html
+    #
+    # This rule is about what style you want to use and enforce, if any.
+    # It of course conflicts with rule:
+    # `prefer_single_quotes` : "DO use single quotes where they wouldn't require additional escapes."
+    # https://dart.dev/tools/linter-rules/prefer_single_quotes.html
+    #
+    # For us single quotes are easier to type. On our typical ISO keyboards it is next to Enter key, and
+    # we don't need the Shift plus the far to reach nr 2 key on R1 to type it. Also, we don't think
+    # single quotes compromise on readability.
+    # Then again, if you don't care and don't mind mixing and matching, then ALSO
+    # turning OFF `prefer_single_quotes` works fine too, and then you can use both options.
+    #
+    # We think it is cleaner to stick to one style. Single quotes are easier to type for us,
+    # thus we turn OFF this `prefer_double_quotes` rule. There is another lint rule that recommends
+    # you to use double quotes when you otherwise would need to escape the single quote char, it works
+    # well when you use the prefer_single_quotes rule as well.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    prefer_double_quotes: false
+
+    # CONSIDER using => for short members whose body is a single return statement.
+    #
+    # https://dart.dev/tools/linter-rules/prefer_expression_function_bodies.html
+    #
+    # Certainly a good idea in many cases, but not always. For example, it is not always suitable for
+    # Flutter, which may have a `build` method with a single return. This return is still
+    # complex enough that a "body" is worth it, and it might not even fit on a single line.
+    # https://github.com/flutter/flutter/wiki/Style-guide-for-Flutter-repo#consider-using--for-short-functions-and-methods
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    prefer_expression_function_bodies: false
+
+    # DO use int literals rather than the corresponding double literal.
+    #
+    # https://dart.dev/tools/linter-rules/prefer_int_literals.html
+    #
+    # This rule goes against the preferred style of being explicit with
+    # declarations and hides when a number is double. We cannot declare it
+    # as 0.0 or 1.0 when it is double, it has to be 0 or 1, making it look
+    # like an integer, even if it is not. Sometimes doing that is OK, but let's
+    # not enforce it.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    prefer_int_literals: false
+
+    # Use an initializing formal to assign a parameter to a field.
+    #
+    # https://dart.dev/tools/linter-rules/prefer_initializing_formals.html
+    #
+    # When enabled the analyzer produces this diagnostic when a constructor parameter 
+    # is used to initialize a field without modification.
+    # This is a nice feature, it is shorter and can be used in new code if so desired.
+    # We will just not enforce it, as it is a lot of code to update, but also because agents
+    # are still not used to Dart code written this way. We may adopt it as enforced later.
+    #
+    # Lint rule exception added: Jun 3, 2026. Note this is the only rule we disable
+    # that `flutter_lints` (and `lints` recommended) enables, so we are stepping
+    # below that baseline here rather than merely declining an extra rule.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    true  : https://pub.dev/packages/lints
+    # Flutter Lints  true  : https://pub.dev/packages/flutter_lints
+    # Flutter repo   true  : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           true  : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    prefer_initializing_formals: false
+
+    # DO document all public members.
+    #
+    # https://dart.dev/tools/linter-rules/public_member_api_docs.html
+    #
+    # All non-overriding public members should be documented with /// doc-style comments.
+    # Not necessary for an app, but nice to do when useful. We try to but do not enforce it.
+    # If you write public packages keep this rule ON.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    # 
+    # We use this for packages but turn it OFF/false in apps.
+    # public_member_api_docs: false
+
+    # PREFER relative imports for files in lib/.
+    #
+    # https://dart.dev/tools/linter-rules/prefer_relative_imports
+    #
+    # This rule conflicts with `always_use_package_imports`, which we use, so we turn it OFF.
+    # https://dart.dev/tools/linter-rules/always_use_package_imports.html
+    #
+    # Use what you prefer. You have to be consistent though, since mixing and matching can
+    # cause issues as the same file imported with the other way are considered to be
+    # different libs and code, even if it is the same file. This will impact the functionality
+    # of e.g., singletons, service locators and increase code size.
+    #
+    # Other known linters use:
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   true  : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    prefer_relative_imports: false
+
+    # DO use trailing commas for all function calls and declarations unless the function call or
+    # definition, from the start of the function name up to the closing parenthesis,
+    # fits in a single line.
+    #
+    # https://dart.dev/tools/linter-rules/require_trailing_commas.html
+    #
+    # This rule forces commas even in places where it just adds extra lines, that
+    # adds little value. 
+    #
+    # This rule conflicts with the new Dart 3.7 formatter unless you use the preserve trailing commas
+    # option added in Dart 3.8. We disable the rule, even if we do use the preserve trailing commas
+    # in the formatter.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    require_trailing_commas: false
+
+    # AVOID redundant member names in variable patterns.
+    #
+    # When a variable pattern declares a variable with the same name as a member of the matched type, 
+    # the member name is redundant and can be omitted.
+    #
+    # This rules can make pattern matching unclear, we prefer to be explicit.
+    # We had very few cases where this applied and removing those cases seemed less clear.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    true  : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    simplify_variable_pattern: false
+
+    # DON'T use final for local variables.
+    #
+    # https://dart.dev/tools/linter-rules/unnecessary_final.html
+    #
+    # Incompatible with `prefer_final_locals` that we want, because having immutable local variables when
+    # applicable makes larger functions more predictable and easier to reason about, so we
+    # use `prefer_final_locals` instead.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    unnecessary_final: false
+
+    # DON'T use unnecessary type name in a constructor.
+    #
+    # https://dart.dev/tools/linter-rules/unnecessary_type_name_in_constructor.html
+    #
+    # Don't include the type name in a constructor declaration. 
+    # It isn't necessary, and the code is shorter and cleaner without it.
+    #
+    # We do not enforce this Dart 3.13 migration, using it or the `new` keyword are
+    # both OK and accepted in this lint rule set. We might consider enforcing it
+    # and migrating to it later.
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  false : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    unnecessary_type_name_in_constructor: false
+
+    # DO use DecoratedBox when a Container has only a Decoration.
+    #
+    # Not used because of this issue https://github.com/dart-lang/linter/issues/3286
+    # DecoratedBox and Container are not equivalent (Container inserts extra padding)
+    #
+    # Other known linters use:
+    #
+    # Core           false : https://pub.dev/packages/lints
+    # Recommended    false : https://pub.dev/packages/lints
+    # Flutter Lints  false : https://pub.dev/packages/flutter_lints
+    # Flutter repo   false : https://github.com/flutter/flutter/blob/master/analysis_options_common.yaml
+    # Lint           false : https://pub.dev/packages/lint
+    # VG Analysis    false : https://pub.dev/packages/very_good_analysis
+    # Riverpod/Remi  true  : https://github.com/rrousselGit/riverpod/blob/master/analysis_options.yaml
+    use_decorated_box: false
