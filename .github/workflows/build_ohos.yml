@@ -117,7 +117,10 @@ jobs:
             GIT_LFS_SKIP_SMUDGE=1 flutter pub get && break
             echo "pub get failed, retrying ($i)..."; sleep 20
           done
-          flutter build hap --debug
+          # 未签名构建在 HAP 生成后会因签名检查 throwToolExit(1)，
+          # 以产物存在与否判定成败（verify 步骤兜底）
+          flutter build hap --debug || true
+          ls -la ohos/entry/build/default/outputs/default/ 2>/dev/null || true
         working-directory: ${{ github.workspace }}
         shell: bash
 
