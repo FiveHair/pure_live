@@ -59,6 +59,11 @@ jobs:
 
       # flutter_tools 源码补丁（.so.N 版本库复制 + 引擎版本读取），
       # 见 tool/patch_ohflutter_tools.py；分支回退保证幂等
+      # flutter_tools 的 pub 依赖里有 SSH 形式的 atomgit 仓库，重写为 HTTPS
+      - name: Rewrite SSH git URLs to HTTPS
+        run: git config --global url."https://atomgit.com/".insteadOf "git@atomgit.com:"
+        shell: bash
+
       - name: Patch flutter_tools (versioned .so copy)
         run: |
           cd "$RUNNER_TEMP/flutter"
