@@ -25,7 +25,7 @@ jobs:
       - name: Setup HarmonyOS toolchain
         uses: ErBWs/setup-ohos@main
         with:
-          version: latest
+          version: 26.0.0.821
           cache: true
 
       - name: Setup JDK17
