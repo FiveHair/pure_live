@@ -100,24 +100,19 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: bash
 
-      - name: Get Flutter dependencies
+      # hvigorw.bat 垫片按 TOOL_HOME/tools/hvigor 布局查找工具链；
+      # pub get 与 build 同步骤执行，避免环境切换触发 SDK 版本重解析
+      - name: Build HAP (debug, unsigned)
         run: |
+          export TOOL_HOME="$(cygpath -m "$HOME/ohos-sdk/command-line-tools")"
+          export DEVECO_SDK_HOME="$(cygpath -m "$HOME/ohos-sdk/command-line-tools/sdk")"
+          echo "TOOL_HOME=$TOOL_HOME"
+          echo "DEVECO_SDK_HOME=$DEVECO_SDK_HOME"
           for i in 1 2 3; do
             GIT_LFS_SKIP_SMUDGE=1 flutter pub get && break
             echo "pub get failed, retrying ($i)..."; sleep 20
           done
-        working-directory: ${{ github.workspace }}
-        shell: bash
-
-      # hvigorw.bat 垫片按 TOOL_HOME/tools/hvigor 布局查找工具链
-      - name: Export toolchain env
-        run: |
-          echo "TOOL_HOME=$(cygpath -m "$HOME/ohos-sdk/command-line-tools")" >> $GITHUB_ENV
-          echo "DEVECO_SDK_HOME=$(cygpath -m "$HOME/ohos-sdk/command-line-tools/sdk")" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Build HAP (debug, unsigned)
-        run: flutter build hap --debug
+          flutter build hap --debug
         working-directory: ${{ github.workspace }}
         shell: bash
 
