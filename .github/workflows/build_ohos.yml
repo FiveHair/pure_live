@@ -48,6 +48,9 @@ jobs:
               echo "clone failed, retrying ($i)..."; sleep 15
               rm -rf "$RUNNER_TEMP/flutter"
             done
+            # 浅克隆无 tag 会让 flutter 版本解析成 unknown，pub 求解必败；补拉版本 tag
+            git -C "$RUNNER_TEMP/flutter" fetch --depth 1 origin tag 3.47.4-ohos-1.0.4 || true
+            git -C "$RUNNER_TEMP/flutter" tag --list
           fi
           echo "$RUNNER_TEMP/flutter/bin" >> $GITHUB_PATH
         shell: bash
