@@ -11,22 +11,17 @@ on:
 
 env:
   FLUTTER_OHOS_BRANCH: oh-3.47.4-dev
-  FLUTTER_OHOS_TAG: 3.47.4-ohos-1.0.4
 
 jobs:
   build_ohos:
     name: Build ohos HAP (unsigned)
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Clone repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl xz-utils zip libglu1-mesa python3 jq
-        shell: bash
-
+      # Windows 宿主：oh-flutter 官方仅提供 windows/darwin 的定制 dart-sdk
+      # （含 Abi.ohosArm 扩展，编译 flutter_tools 必需），Linux 无法引导
       - name: Setup HarmonyOS toolchain
         uses: ErBWs/setup-ohos@v1
         with:
@@ -43,7 +38,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/flutter
-          key: ohflutter-3.47.4-dev-${{ runner.os }}
+          key: ohflutter-3.47.4-dev-win
 
       - name: Setup flutter-ohos
         run: |
@@ -57,20 +52,23 @@ jobs:
           echo "$RUNNER_TEMP/flutter/bin" >> $GITHUB_PATH
         shell: bash
 
-      # flutter_tools 源码补丁（.so.N 版本库复制 + 引擎版本读取），
-      # 见 tool/patch_ohflutter_tools.py；分支回退保证幂等
       # flutter_tools 的 pub 依赖里有 SSH 形式的 atomgit 仓库，重写为 HTTPS
       - name: Rewrite SSH git URLs to HTTPS
         run: git config --global url."https://atomgit.com/".insteadOf "git@atomgit.com:"
         shell: bash
 
+      # flutter_tools / hvigor 插件补丁（.so.N 版本库复制），幂等重放
       - name: Patch flutter_tools (versioned .so copy)
         run: |
           cd "$RUNNER_TEMP/flutter"
-          git checkout -- packages/flutter_tools/lib/src/ohos/ohos_builder.dart || true
-          git checkout -- packages/flutter_tools/hvigor/src/plugin/flutter-hvigor-plugin.ts || true
-          python3 "$GITHUB_WORKSPACE/tool/patch_ohflutter_tools.py" "$RUNNER_TEMP/flutter"
+          git checkout -- packages/flutter_tools/lib/src/ohos/ohos_builder.dart 2>/dev/null || true
+          git checkout -- packages/flutter_tools/hvigor/src/plugin/flutter-hvigor-plugin.ts 2>/dev/null || true
+          python "$GITHUB_WORKSPACE/tool/patch_ohflutter_tools.py" "$RUNNER_TEMP/flutter"
           rm -f bin/cache/flutter_tools.stamp bin/cache/flutter_tools.snapshot
+        shell: bash
+
+      - name: Bootstrap flutter-ohos
+        run: flutter --version
         shell: bash
 
       # 本地路径依赖的伴生仓库（媒体引擎全家桶与弹幕引擎）
@@ -84,7 +82,6 @@ jobs:
             git clone --depth 1 https://github.com/liuchuancong/flame_barrage.git "$RUNNER_TEMP/flame_barrage" && break
             sleep 15
           done
-          # media-kit 本地副本（ohos sysroot 补丁）
           for i in 1 2 3; do
             git clone https://github.com/Predidit/media-kit.git "$RUNNER_TEMP/media-kit-predidit" && break
             sleep 15
@@ -95,11 +92,11 @@ jobs:
 
       - name: Rewrite local paths to CI locations
         run: |
-          # pubspec 中的绝对路径依赖（D:/DEV/...）指向 CI 克隆位置
-          sed -i "s|D:/DEV/media_core/packages|$RUNNER_TEMP/media_core/packages|g; \
-                  s|D:/DEV/flame_barrage|$RUNNER_TEMP/flame_barrage|g; \
-                  s|D:/DEV/media-kit-predidit|$RUNNER_TEMP/media-kit-predidit|g" pubspec.yaml
-          grep -n "RUNNER_TEMP\|/home/runner" pubspec.yaml | head -6
+          W="$(cygpath -m "$RUNNER_TEMP")"
+          sed -i "s|D:/DEV/media_core/packages|$W/media_core/packages|g; \
+                  s|D:/DEV/flame_barrage|$W/flame_barrage|g; \
+                  s|D:/DEV/media-kit-predidit|$W/media-kit-predidit|g" pubspec.yaml
+          grep -nE "media_core|flame_barrage|media-kit-predidit" pubspec.yaml | head -6
         working-directory: ${{ github.workspace }}
         shell: bash
 
@@ -112,13 +109,11 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: bash
 
-      - name: Restore vendored package patches
+      # hvigorw.bat 垫片按 TOOL_HOME/tools/hvigor 布局查找工具链
+      - name: Export toolchain env
         run: |
-          # vendor 包的 TargetPlatform.ohos 修复在仓库内（third_party/），
-          # 这里重放格式化保证语法正确
-          dart format third_party/material_ui third_party/cupertino_ui \
-            third_party/syncfusion_flutter_sliders third_party/flex_color_picker 2>&1 | tail -1
-        working-directory: ${{ github.workspace }}
+          echo "TOOL_HOME=$(cygpath -m "$HOME/ohos-sdk/command-line-tools")" >> $GITHUB_ENV
+          echo "DEVECO_SDK_HOME=$(cygpath -m "$HOME/ohos-sdk/command-line-tools/sdk")" >> $GITHUB_ENV
         shell: bash
 
       - name: Build HAP (debug, unsigned)
@@ -126,10 +121,8 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: bash
 
-      # 防止 LFS 指针占位文件混入产物（会导致安装后白屏）
       - name: Verify HAP libraries
-        run: |
-          python3 tool_verify_hap.py ./ohos/entry/build/default/outputs/default/entry-default-unsigned.hap
+        run: python tool_verify_hap.py ./ohos/entry/build/default/outputs/default/entry-default-unsigned.hap
         working-directory: ${{ github.workspace }}
         shell: bash
 
