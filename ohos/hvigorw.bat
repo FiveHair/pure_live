@@ -22,6 +22,13 @@ set "DEVECO_HOME="
 if defined TOOL_HOME set "DEVECO_HOME=%TOOL_HOME%"
 if not exist "%DEVECO_HOME%\tools\hvigor\bin\hvigorw.js" set "DEVECO_HOME=C:\Program Files\Huawei\DevEco Studio"
 if not exist "%DEVECO_HOME%\tools\hvigor\bin\hvigorw.js" (
+  if defined TOOL_HOME if exist "%TOOL_HOME%\bin\hvigorw.bat" (
+    @rem command-line-tools layout: bin\hvigorw.bat + tool\node, no tools\hvigor.
+    @rem Forward directly; ohpm recursion is avoided via PATH-shim below.
+    set "PATH=%~dp0tool-shims;%PATH%"
+    call "%TOOL_HOME%\bin\hvigorw.bat" %*
+    endlocal & exit /b %ERRORLEVEL%
+  )
   echo ERROR: DevEco Studio hvigor not found. Please install DevEco Studio or set TOOL_HOME.
   exit /b 1
 )
