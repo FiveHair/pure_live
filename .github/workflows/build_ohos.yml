@@ -48,7 +48,9 @@ jobs:
               echo "clone failed, retrying ($i)..."; sleep 15
               rm -rf "$RUNNER_TEMP/flutter"
             done
-            # 浅克隆无 tag 会让 flutter 版本解析成 unknown，pub 求解必败；补拉版本 tag
+            # 浅克隆无 tag 会让 flutter 版本解析成 unknown，pub 求解必败；补拉版本 tag。
+            # Windows 路径 260 限制需开 longpaths（flutter/packages 内有超长文件名）
+            git config --global core.longpaths true
             git -C "$RUNNER_TEMP/flutter" fetch --depth 1 origin tag 3.47.4-ohos-1.0.4 || true
             git -C "$RUNNER_TEMP/flutter" tag --list
           fi
