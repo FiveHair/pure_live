@@ -239,6 +239,18 @@ dependency_overrides:
       url: https://gitcode.com/CPF-Flutter/flutter_packages.git
       path: packages/path_provider/path_provider_ohos
       ref: br_path_provider-v2.1.5_ohos
+  # 鸿蒙移植：easy_localization 等启动即读 shared_preferences，
+  # 无 ohos 实现会 MissingPluginException 导致白屏
+  shared_preferences:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_packages.git
+      path: packages/shared_preferences/shared_preferences
+      ref: br_shared_preferences-v2.5.4_ohos
+  shared_preferences_ohos:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_packages.git
+      path: packages/shared_preferences/shared_preferences_ohos
+      ref: br_shared_preferences-v2.5.4_ohos
   # media_kit 链与 better_player_plus 对 wakelock_plus 的约束无交集,
   # 与 media_core 工作区同样以 override 对齐
   wakelock_plus: ^1.7.0

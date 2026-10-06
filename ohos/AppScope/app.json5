@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "com.mystyle.pure_live",
+    "bundleName": "com.lixiaotiao.dart_quickjs",
     "vendor": "example",
     "versionCode": 1000000,
     "versionName": "1.0.0",
