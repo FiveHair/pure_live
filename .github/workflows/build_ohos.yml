@@ -1,0 +1,142 @@
+name: Build HarmonyOS (ohos)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ohos-support
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+
+env:
+  FLUTTER_OHOS_BRANCH: oh-3.47.4-dev
+  FLUTTER_OHOS_TAG: 3.47.4-ohos-1.0.4
+
+jobs:
+  build_ohos:
+    name: Build ohos HAP (unsigned)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl xz-utils zip libglu1-mesa python3 jq
+        shell: bash
+
+      - name: Setup HarmonyOS toolchain
+        uses: ErBWs/setup-ohos@v1
+        with:
+          version: latest
+          cache: true
+
+      - name: Setup JDK17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Cache flutter-ohos SDK
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/flutter
+          key: ohflutter-3.47.4-dev-${{ runner.os }}
+
+      - name: Setup flutter-ohos
+        run: |
+          if [ ! -d "$RUNNER_TEMP/flutter/bin" ]; then
+            for i in 1 2 3; do
+              git clone -b $FLUTTER_OHOS_BRANCH --depth 1 https://atomgit.com/oh-flutter/flutter_flutter.git "$RUNNER_TEMP/flutter" && break
+              echo "clone failed, retrying ($i)..."; sleep 15
+              rm -rf "$RUNNER_TEMP/flutter"
+            done
+          fi
+          echo "$RUNNER_TEMP/flutter/bin" >> $GITHUB_PATH
+        shell: bash
+
+      # flutter_tools 源码补丁（.so.N 版本库复制 + 引擎版本读取），
+      # 见 tool/patch_ohflutter_tools.py；分支回退保证幂等
+      - name: Patch flutter_tools (versioned .so copy)
+        run: |
+          cd "$RUNNER_TEMP/flutter"
+          git checkout -- packages/flutter_tools/lib/src/ohos/ohos_builder.dart || true
+          git checkout -- packages/flutter_tools/hvigor/src/plugin/flutter-hvigor-plugin.ts || true
+          python3 "$GITHUB_WORKSPACE/tool/patch_ohflutter_tools.py" "$RUNNER_TEMP/flutter"
+          rm -f bin/cache/flutter_tools.stamp bin/cache/flutter_tools.snapshot
+        shell: bash
+
+      # 本地路径依赖的伴生仓库（媒体引擎全家桶与弹幕引擎）
+      - name: Clone companion repos
+        run: |
+          for i in 1 2 3; do
+            git clone --depth 1 https://github.com/liuchuancong/media_core.git "$RUNNER_TEMP/media_core" && break
+            sleep 15
+          done
+          for i in 1 2 3; do
+            git clone --depth 1 https://github.com/liuchuancong/flame_barrage.git "$RUNNER_TEMP/flame_barrage" && break
+            sleep 15
+          done
+          # media-kit 本地副本（ohos sysroot 补丁）
+          for i in 1 2 3; do
+            git clone https://github.com/Predidit/media-kit.git "$RUNNER_TEMP/media-kit-predidit" && break
+            sleep 15
+          done
+          cd "$RUNNER_TEMP/media-kit-predidit"
+          git checkout 803c4a27912091db6f839d48d1b984a0d9f588c7
+        shell: bash
+
+      - name: Rewrite local paths to CI locations
+        run: |
+          # pubspec 中的绝对路径依赖（D:/DEV/...）指向 CI 克隆位置
+          sed -i "s|D:/DEV/media_core/packages|$RUNNER_TEMP/media_core/packages|g; \
+                  s|D:/DEV/flame_barrage|$RUNNER_TEMP/flame_barrage|g; \
+                  s|D:/DEV/media-kit-predidit|$RUNNER_TEMP/media-kit-predidit|g" pubspec.yaml
+          grep -n "RUNNER_TEMP\|/home/runner" pubspec.yaml | head -6
+        working-directory: ${{ github.workspace }}
+        shell: bash
+
+      - name: Get Flutter dependencies
+        run: |
+          for i in 1 2 3; do
+            GIT_LFS_SKIP_SMUDGE=1 flutter pub get && break
+            echo "pub get failed, retrying ($i)..."; sleep 20
+          done
+        working-directory: ${{ github.workspace }}
+        shell: bash
+
+      - name: Restore vendored package patches
+        run: |
+          # vendor 包的 TargetPlatform.ohos 修复在仓库内（third_party/），
+          # 这里重放格式化保证语法正确
+          dart format third_party/material_ui third_party/cupertino_ui \
+            third_party/syncfusion_flutter_sliders third_party/flex_color_picker 2>&1 | tail -1
+        working-directory: ${{ github.workspace }}
+        shell: bash
+
+      - name: Build HAP (debug, unsigned)
+        run: flutter build hap --debug
+        working-directory: ${{ github.workspace }}
+        shell: bash
+
+      # 防止 LFS 指针占位文件混入产物（会导致安装后白屏）
+      - name: Verify HAP libraries
+        run: |
+          python3 tool_verify_hap.py ./ohos/entry/build/default/outputs/default/entry-default-unsigned.hap
+        working-directory: ${{ github.workspace }}
+        shell: bash
+
+      - name: Package output
+        run: |
+          cp ./ohos/entry/build/default/outputs/default/entry-default-unsigned.hap \
+             pure_live_ohos_debug_unsigned.hap
+        working-directory: ${{ github.workspace }}
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pure_live_ohos
+          path: pure_live_ohos_debug_unsigned.hap
