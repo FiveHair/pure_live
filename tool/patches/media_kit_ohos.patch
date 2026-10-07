@@ -1,0 +1,166 @@
+diff --git a/media_kit/hook/build.dart b/media_kit/hook/build.dart
+index 0545b69d..76526d4d 100644
+--- a/media_kit/hook/build.dart
++++ b/media_kit/hook/build.dart
+@@ -11,6 +11,27 @@ import 'src/bundles.dart';
+ void main(List<String> arguments) async {
+   await build(arguments, (input, output) async {
+     if (!input.config.buildCodeAssets) return;
++
++    // OpenHarmony (ohos): the OHOS clang needs target triple + sysroot.
++    // The hosted `hooks` package maps ohos to OS.linux, so detect the
++    // HarmonyOS toolchain by the compiler path instead of the OS enum.
++    final ohosFlags = <String>[];
++    {
++      final cc = input.config.code.cCompiler?.compiler.toFilePath() ?? '';
++      final ccPath = cc.replaceAll(r'\', '/');
++      final llvmIdx = ccPath.indexOf('/llvm/bin/');
++      if (llvmIdx > 0 && ccPath.contains('openharmony')) {
++        final ohosTarget = switch (input.config.code.targetArchitecture) {
++          Architecture.x64 => 'x86_64-linux-ohos',
++          Architecture.arm => 'arm-linux-ohos',
++          _ => 'aarch64-linux-ohos',
++        };
++        ohosFlags.addAll([
++          '--target=$ohosTarget',
++          '--sysroot=${ccPath.substring(0, llvmIdx)}/sysroot',
++        ]);
++      }
++    }
+     final os = input.config.code.targetOS;
+     final architecture = input.config.code.targetArchitecture;
+     final catalogFile = File.fromUri(
+@@ -52,6 +73,44 @@ void main(List<String> arguments) async {
+         )) {
+           if (entity is File) output.dependencies.add(entity.uri);
+         }
++      } else if (source == 'bundled' && ohosFlags.isNotEmpty) {
++        // Patched for ohos: the stock ohos bundle (ErBWs build) needs
++        // libstdc++.so.6 / libfontconfig.so.1 which don't exist on HarmonyOS.
++        // Ship the CPF-built libmpv instead (system-library-only deps).
++        // _ohosFlags being non-empty marks the OHOS toolchain (os maps to linux).
++        final localLibmpv = File.fromUri(
++          input.packageRoot.resolve('hook/ohos_libmpv/libmpv.so.2'),
++        );
++        if (!localLibmpv.existsSync()) {
++          throw StateError(
++            'ohos requires hook/ohos_libmpv/libmpv.so.2 to exist in the package',
++          );
++        }
++        output.dependencies.add(localLibmpv.uri);
++        output.assets.code.add(
++          CodeAsset(
++            package: input.packageName,
++            name: 'libmpv',
++            linkMode: DynamicLoadingBundled(),
++            file: localLibmpv.uri,
++          ),
++        );
++        await CBuilder.library(
++          name: 'media_kit_event_loop',
++          assetName: 'src/player/native/core/native_event_loop_bindings.dart',
++          sources: ['src/native_event_loop.c', 'src/native_library.c'],
++          includes: [
++            File(
++              Platform.resolvedExecutable,
++            ).parent.parent.uri.resolve('include/').toFilePath(),
++          ],
++          flags: ohosFlags,
++          libraries: [
++            if (os == OS.linux) ...['pthread', 'dl'],
++            if (os == OS.android) 'dl',
++          ],
++        ).run(input: input, output: output);
++        return;
+       } else if (source == 'bundled') {
+         final cache = BundleCache(
+           Directory.fromUri(
+@@ -107,6 +166,7 @@ void main(List<String> arguments) async {
+           Platform.resolvedExecutable,
+         ).parent.parent.uri.resolve('include/').toFilePath(),
+       ],
++      flags: ohosFlags,
+       libraries: [
+         if (os == OS.linux) ...['pthread', 'dl'],
+         if (os == OS.android) 'dl',
+diff --git a/media_kit_video/lib/src/video_controller/ohos_video_controller/real.dart b/media_kit_video/lib/src/video_controller/ohos_video_controller/real.dart
+index 6d44ac81..63ae9f3b 100644
+--- a/media_kit_video/lib/src/video_controller/ohos_video_controller/real.dart
++++ b/media_kit_video/lib/src/video_controller/ohos_video_controller/real.dart
+@@ -82,9 +82,18 @@ class OhosVideoController extends PlatformVideoController {
+             'height': height.toString(),
+           },
+         );
+-        await setProperties({
+-          'ohos-surface-size': [width, height].join('x'),
+-        });
++        // Re-assert wid/vo around the surface resize, mirroring the proven
++        // CPF flow: vo=null while the window changes, then wid → vo → vid.
++        final widValue = wid.value?.toString() ?? '0';
++        await setProperty('vo', 'null');
++        await setProperties(
++          {
++            'openharmony-surface-size': [width, height].join('x'),
++            'wid': widValue,
++            'vo': widValue == '0' ? 'null' : configuration.vo!,
++            'vid': widValue == '0' ? 'no' : 'auto',
++          },
++        );
+ 
+         rect.value = Rect.fromLTWH(
+           0.0,
+@@ -116,12 +125,15 @@ class OhosVideoController extends PlatformVideoController {
+ 
+     Future<String> getDefaultHwdec() async {
+       bool hw = configuration.enableHardwareAcceleration;
+-      return hw ? 'auto' : 'no';
++      return hw ? 'auto-safe' : 'no';
+     }
+ 
+     // Update [configuration] to have default values.
++    // vo=gpu + gpu-context=openharmony is the only combination the bundled
++    // libmpv supports (built with -Degl-openharmony=enabled); gpu-next has no
++    // ohos context in this build.
+     configuration = configuration.copyWith(
+-      vo: configuration.vo ?? 'gpu-next',
++      vo: configuration.vo ?? 'gpu',
+       hwdec: configuration.hwdec ?? await getDefaultHwdec(),
+     );
+ 
+@@ -170,21 +182,31 @@ class OhosVideoController extends PlatformVideoController {
+ 
+     await controller.lock.synchronized(() async {
+       // MPV's HarmonyOS video output requires a valid surface ID before the
+-      // GPU video output is initialized.
++      // GPU video output is initialized: vo=null first, then --wid, then vo.
++      // Property names match the bundled libmpv build: the option is
++      // "openharmony-surface-size" and the context is "openharmony".
+       await controller.setProperty('vo', 'null');
+       await controller.setProperties(
+         {
+-          'ohos-surface-size': '${rect.width.toInt()}x${rect.height.toInt()}',
++          // ORDER IS IMPORTANT.
++          'openharmony-surface-size':
++              '${rect.width.toInt()}x${rect.height.toInt()}',
+           'wid': wid.toString(),
+-          'hwdec': configuration.hwdec!,
++          'vo': configuration.vo!,
+           'vid': 'auto',
++          'gpu-context': 'openharmony',
++          'opengl-es': 'yes',
++          'gpu-dumb-mode': 'yes',
++          'vd-lavc-dr': 'no',
++          'hwdec': configuration.hwdec!,
++          'hwdec-codecs': 'h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1',
+           'force-window': 'yes',
+           'sub-use-margins': 'no',
+-          'sub-scale-with-window': 'no',
++          'sub-font-provider': 'none',
++          'sub-scale-with-window': 'yes',
+           'osd-font': 'HarmonyOS Sans SC',
+         },
+       );
+-      await controller.setProperty('vo', configuration.vo!);
+     });
+ 
+     // Return the [PlatformVideoController].

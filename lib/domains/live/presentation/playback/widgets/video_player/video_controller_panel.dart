@@ -157,8 +157,17 @@ class _VideoControllerPanelState extends State<VideoControllerPanel> {
               : Icons.volume_up;
 
           return MouseRegion(
-            onHover: (_) => controller.onMouseHoverPlayer(),
-            onExit: (_) => controller.onMouseExitPlayer(),
+            // ohos 引擎会把触摸合成为 hover：手指按下即触发 onHover，控制条
+            // 被提前显示，随后到达的 onTap 因此走"再次点击隐藏"分支，控制
+            // 条闪现后立即缩回。触摸来源的 hover 事件一律忽略。
+            onHover: (event) {
+              if (event.kind == PointerDeviceKind.touch) return;
+              controller.onMouseHoverPlayer();
+            },
+            onExit: (event) {
+              if (event.kind == PointerDeviceKind.touch) return;
+              controller.onMouseExitPlayer();
+            },
             cursor: !controller.showController.value ? SystemMouseCursors.none : SystemMouseCursors.basic,
             child: Stack(
               children: [
@@ -1479,6 +1488,30 @@ class BottomActionBar extends StatelessWidget {
                   final right = _buildRightActions(compact: compact);
 
                   if (fullscreen) {
+                    // 方形/窄外屏（如 Pura X 外屏 980×980，逻辑宽约 326）：
+                    // 左右动作组本身就超出可用宽度，中间弹幕输入框更无立足
+                    // 之地，固定 Row 会 RenderFlex 溢出——改横向滚动承载。
+                    if (constraints.maxWidth < 420) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const PureLiveBoundedScrollPhysics(),
+                          child: Row(
+                            children: [
+                              left,
+                              const SizedBox(width: 8),
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 420),
+                                child: FullscreenLocalDanmakuComposer(controller: controller),
+                              ),
+                              const SizedBox(width: 8),
+                              right,
+                            ],
+                          ),
+                        ),
+                      );
+                    }
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Row(

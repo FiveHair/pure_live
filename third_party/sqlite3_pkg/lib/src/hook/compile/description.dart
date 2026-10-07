@@ -1,0 +1,600 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:code_assets/code_assets.dart';
+import 'package:crypto/crypto.dart';
+import 'package:hooks/hooks.dart';
+import 'package:meta/meta.dart';
+import 'package:path/path.dart' as p;
+
+import '../assets.dart';
+import '../asset_hashes.dart';
+import '../utils.dart';
+
+/// Possible sources to obtain a `libsqlite3.so` (or the equivalent for other
+/// platforms).
+sealed class SqliteBinary {
+  static SqliteBinary forBuild(BuildInput input) {
+    final userDefines = input.userDefines;
+
+    PrecompiledFromGithubAssets fromGitHub(LibraryType type) {
+      final pattern =
+          userDefines['url_pattern'] as String? ??
+          PrecompiledFromGithubAssets.defaultUrlPattern;
+
+      return PrecompiledFromGithubAssets(type, urlPattern: pattern);
+    }
+
+    String resolvePath({required Uri base, required String path}) {
+      return p.isAbsolute(path) ? path : base.resolve(path).toFilePath();
+    }
+
+    List<String> resolvedPaths(String key) {
+      final baseUri = userDefines.baseUri([key]);
+      final value = (userDefines[key] as List?)?.cast<String>() ?? const [];
+
+      if (baseUri == null) return value;
+      return [for (final path in value) resolvePath(base: baseUri, path: path)];
+    }
+
+    final targetOS = input.config.code.targetOS;
+
+    // `source` and `name` are either a string or a map from target OS names
+    // (or `default`) to strings.
+    String? forTargetOS(String key) {
+      final value = userDefines[key];
+      final resolved = value is Map
+          ? value[targetOS.name] ?? value['default']
+          : value;
+
+      return switch (resolved) {
+        null => null,
+        final String string => string,
+        _ => throw ArgumentError.value(
+          value,
+          key,
+          'Expected a string or a map of strings',
+        ),
+      };
+    }
+
+    final source = forTargetOS('source');
+
+    switch (source) {
+      case null:
+      case 'sqlite3':
+        return fromGitHub(LibraryType.sqlite3);
+      case 'sqlite3mc':
+        return fromGitHub(LibraryType.sqlite3mc);
+      case 'sqlcipher':
+        return fromGitHub(LibraryType.sqlcipher);
+      case 'test-sqlite3':
+        return PrecompiledForTesting(LibraryType.sqlite3);
+      case 'test-sqlite3mc':
+        return PrecompiledForTesting(LibraryType.sqlite3mc);
+      case 'test-sqlcipher':
+        return PrecompiledForTesting(LibraryType.sqlcipher);
+      case 'system':
+        // For backwards compatibility, before per-OS subkeys were supported.
+        final osSpecificNameKey = 'name_${targetOS.name}';
+
+        return LookupSystem(
+          ((userDefines[osSpecificNameKey] ?? forTargetOS('name') ?? 'sqlite3')
+              as String),
+        );
+      case 'process':
+        return SimpleBinary.fromProcess;
+      case 'executable':
+        return SimpleBinary.fromExecutable;
+      case 'source':
+        final basePath = userDefines.baseUri(['path']);
+        final path = userDefines['path'];
+
+        if (basePath == null || path == null) {
+          throw ArgumentError('Using source: source requires a path key');
+        }
+
+        return CompileSqlite(
+          sourceFiles: switch (path) {
+            final String path => [resolvePath(base: basePath, path: path)],
+            final List<Object?> paths => [
+              for (final path in paths)
+                resolvePath(base: basePath, path: path as String),
+            ],
+            _ => throw ArgumentError.value(
+              path,
+              'path',
+              'Should be a string or a list of strings',
+            ),
+          },
+          defines: CompilerDefines.parse(
+            userDefines,
+            input.config.code.targetOS,
+          ),
+          additionalIncludes: resolvedPaths('additional_includes'),
+          additionalFlags:
+              (userDefines['additional_flags'] as List?)?.cast() ?? const [],
+          additionalLibraryDirectories: resolvedPaths(
+            'additional_lib_directories',
+          ),
+          additionalLibraries:
+              (userDefines['additional_libraries'] as List?)?.cast() ??
+              const [],
+        );
+      default:
+        throw ArgumentError.value(
+          source,
+          'source',
+          'Unknown source. Must be sqlite3, sqlite3mc, system, process or '
+              'executable',
+        );
+    }
+  }
+}
+
+/// A [SqliteBinary] not built or downloaded by the hook.
+sealed class ExternalSqliteBinary implements SqliteBinary {
+  LinkMode resolveLinkMode(BuildInput input);
+}
+
+/// Load a `sqlite3` library via `dlopen('libsqlite3.so')` or another platform-
+/// specific name,
+final class LookupSystem implements ExternalSqliteBinary {
+  /// The base name, used to construct an OS-specific library name.
+  final String name;
+
+  const LookupSystem(this.name);
+
+  @override
+  LinkMode resolveLinkMode(BuildInput input) {
+    final targetOS = input.config.code.targetOS;
+    final String dylibName;
+
+    if (p.isAbsolute(name) || p.split(name).length > 1) {
+      // Interpret name as a path. Relative paths are passed to the dynamic
+      // loader unchanged, which allows loading e.g. `foo.framework/foo` or
+      // `@rpath/libfoo.dylib` on Apple platforms.
+      dylibName = name;
+    } else {
+      dylibName = targetOS.libraryFileName(name, DynamicLoadingBundled());
+    }
+
+    return DynamicLoadingSystem(Uri.parse(dylibName));
+  }
+}
+
+/// Options for resolving a sqlite binary that don't require nested options.
+enum SimpleBinary implements ExternalSqliteBinary {
+  /// Lookup a `sqlite3` library that has already been loaded into the process.
+  fromProcess,
+
+  /// Lookup `sqlite3` symbols in the current executable.
+  fromExecutable;
+
+  @override
+  LinkMode resolveLinkMode(BuildInput input) {
+    switch (this) {
+      case SimpleBinary.fromProcess:
+        return LookupInProcess();
+      case SimpleBinary.fromExecutable:
+        return LookupInExecutable();
+    }
+  }
+}
+
+sealed class PrecompiledBinary implements SqliteBinary {
+  final LibraryType type;
+
+  const PrecompiledBinary._(this.type);
+
+  PrebuiltSqliteLibrary resolveLibrary(CodeConfig config) {
+    return PrebuiltSqliteLibrary.resolve(config, type);
+  }
+
+  Stream<Uint8List> _fetchFromSource(
+    BuildInput input,
+    BuildOutputBuilder output,
+    String filename,
+  );
+
+  Stream<Uint8List> fetch(
+    BuildInput input,
+    BuildOutputBuilder output,
+    PrebuiltSqliteLibrary library,
+  ) {
+    return Stream.multi((listener) {
+      final filename = library.sourceFilename;
+      final hash = library.contentSha256Hash;
+      final source = _fetchFromSource(input, output, filename);
+
+      final digestSink = OnceSink<Digest>();
+      final hasher = sha256.startChunkedConversion(digestSink);
+
+      source.listen(
+        (data) {
+          listener.addSync(data);
+          hasher.add(data);
+        },
+        onError: listener.addErrorSync,
+        onDone: () {
+          hasher.close();
+          final digest = digestSink.value!;
+
+          if (digest.toString() != hash) {
+            listener.addError(
+              StateError(
+                'Hash of downloaded file $filename is $digest, expected $hash.',
+              ),
+            );
+          }
+
+          listener.close();
+        },
+      );
+    });
+  }
+
+  /// Downloads this file into [BuildInput.outputDirectoryShared].
+  Future<File> downloadIntoOutputDirectoryShared(
+    BuildInput input,
+    BuildOutputBuilder output,
+    PrebuiltSqliteLibrary library,
+  ) async {
+    // Use a subdirectory of shared outputs to allow caching.
+    final dir = Directory(
+      input.outputDirectoryShared.resolve(library.dirname).toFilePath(),
+    );
+    if (!dir.existsSync()) {
+      dir.createSync();
+    }
+
+    // Note: There are name conflicts here, e.g. an Android build will typically
+    // generate a number of libsqlite3.so file names. This is not an issue
+    // because the parent directory is unique per ABI.
+    // We need the file name to be the same because of constraints on Apple
+    // platforms, see https://github.com/flutter/website/pull/13047.
+    final fileName = input.config.code.targetOS.libraryFileName(
+      library.type.basename,
+      DynamicLoadingBundled(),
+    );
+
+    final downloadedFile = File(p.join(dir.path, fileName));
+    if (downloadedFile.existsSync()) {
+      // Hook is re-run with an existing cache. Does the file match what we
+      // expect?
+      final expectedHash = library.contentSha256Hash;
+      final actualHash = await downloadedFile
+          .openRead()
+          .transform(sha256)
+          .first;
+
+      if (actualHash.toString() == expectedHash) {
+        // We can reuse the file!
+        return downloadedFile;
+      }
+    }
+
+    final tmp = File('${downloadedFile.path}.tmp');
+    await fetch(input, output, library).cast<List<int>>().pipe(tmp.openWrite());
+    tmp.renameSync(downloadedFile.path);
+    return downloadedFile;
+  }
+}
+
+/// Download pre-compiled binaries from the GH release for the `sqlite3`
+/// package.
+final class PrecompiledFromGithubAssets extends PrecompiledBinary {
+  final String urlPattern;
+
+  const PrecompiledFromGithubAssets(
+    super.type, {
+    this.urlPattern = defaultUrlPattern,
+  }) : super._();
+
+  @visibleForTesting
+  Uri downloadUri(String filename) {
+    return Uri.parse(
+      urlPattern
+          .replaceAll(r'$RELEASE_TAG', releaseTag ?? 'null')
+          .replaceAll(r'$FILENAME', filename),
+    );
+  }
+
+  @override
+  Stream<Uint8List> _fetchFromSource(
+    BuildInput input,
+    BuildOutputBuilder output,
+    String filename,
+  ) async* {
+    final client = HttpClient()
+      // From Dart 3.11, proxy-related environment variables are passed to
+      // hooks. We respect them to ensure we can download these binaries in
+      // environments where that's required
+      // https://github.com/simolus3/sqlite3.dart/issues/335
+      ..findProxy = HttpClient.findProxyFromEnvironment;
+    final uri = downloadUri(filename);
+
+    HttpClientResponse response;
+    try {
+      final request = await client.getUrl(uri);
+      request.headers.add(
+        'User-Agent',
+        'github.com/simolus3/sqlite3.dart artifact downloader, version $releaseTag',
+      );
+      response = await request.close();
+    } catch (e, s) {
+      // Improve error message by providing some context about why we download
+      // SQLite.
+      Error.throwWithStackTrace(CouldNotDownloadException(uri, e), s);
+    }
+
+    await for (final chunk in response) {
+      if (chunk is Uint8List) {
+        yield chunk;
+      } else {
+        yield Uint8List.fromList(chunk);
+      }
+    }
+
+    client.close();
+  }
+
+  static const defaultUrlPattern =
+      r'https://github.com/simolus3/sqlite3.dart/releases/download/$RELEASE_TAG/$FILENAME';
+}
+
+/// A variant of [PrecompiledFromGithubAssets] that doesn't require a github
+/// release.
+///
+/// This is only used to test the package: We download the assets we would
+/// upload for a release build into a folder, and then have the hook look them
+/// up there.
+final class PrecompiledForTesting extends PrecompiledBinary {
+  const PrecompiledForTesting(super.type) : super._();
+
+  @override
+  Stream<Uint8List> _fetchFromSource(
+    BuildInput input,
+    BuildOutputBuilder output,
+    String filename,
+  ) {
+    final uri = input.userDefines.path('directory')!.resolve(filename);
+    output.dependencies.add(uri);
+
+    return File(uri.toFilePath()).openRead().map(
+      (event) => switch (event) {
+        final Uint8List bytes => bytes,
+        _ => Uint8List.fromList(event),
+      },
+    );
+  }
+}
+
+final class CompileSqlite implements SqliteBinary {
+  /// Path to source files to compile (typically a single `sqlite3.c`).
+  final List<String> sourceFiles;
+
+  /// User-defines for the SQLite compilation.
+  final CompilerDefines defines;
+
+  /// Additional header search paths.
+  final List<String> additionalIncludes;
+
+  /// Additional flags to pass to the compiler.
+  final List<String> additionalFlags;
+
+  final List<String> additionalLibraryDirectories;
+
+  /// Additional libraries to link.
+  final List<String> additionalLibraries;
+
+  CompileSqlite({
+    required this.sourceFiles,
+    required this.defines,
+    required this.additionalIncludes,
+    required this.additionalFlags,
+    required this.additionalLibraryDirectories,
+    required this.additionalLibraries,
+  });
+}
+
+/// If we're compiling SQLite from source, a way to obtain these sources.
+sealed class SqliteSources {}
+
+/// Obtain a copy of SQLite by downloading the amalgamation.
+final class DownloadAmalgamation implements SqliteSources {
+  /// The URL to download SQLite from.
+  final String uri;
+
+  /// The name of the single C file to compile from the downloaded archive.
+  final String filename;
+
+  const DownloadAmalgamation({
+    this.uri = 'https://sqlite.org/2025/sqlite-amalgamation-3500200.zip',
+    this.filename = 'sqlite3.c',
+  });
+
+  // ignore: unused_element
+  factory DownloadAmalgamation._parse(Object definition) {
+    if (definition is String) {
+      return DownloadAmalgamation(uri: definition);
+    } else if (definition is Map) {
+      return DownloadAmalgamation(
+        uri: definition['uri'] as String,
+        filename: (definition['filename'] as String?) ?? 'sqlite3.c',
+      );
+    } else {
+      throw ArgumentError.value(
+        definition,
+        'definition',
+        'Unknown amalgamation description',
+      );
+    }
+  }
+}
+
+/// Definition options to use when compiling SQLite.
+extension type const CompilerDefines(Map<String, String?> flags)
+    implements Map<String, String?> {
+  CompilerDefines overrideWith(CompilerDefines other) {
+    return CompilerDefines({...flags, ...other.flags});
+  }
+
+  static CompilerDefines parse(HookInputUserDefines defines, OS targetOS) {
+    var obj = defines['defines'];
+
+    // Like `source` and `name`, `defines` can be a map from target OS names
+    // (or `default`) to the actual definition.
+    if (obj is Map && obj.keys.any(_isTargetOSKey)) {
+      if (!obj.keys.every(_isTargetOSKey)) {
+        throw ArgumentError.value(
+          obj,
+          'defines',
+          'Cannot mix operating system keys with other options, move them '
+              'into the entry for each operating system instead',
+        );
+      }
+
+      obj = obj[targetOS.name] ?? obj['default'];
+    }
+
+    // Include default options when not explicitly disabled.
+    final includeDefaults = switch (obj) {
+      {'default_options': false} => false,
+      _ => true,
+    };
+
+    // Allow adding additional options under defines key or as a top-level
+    // array.
+    final additionalDefines = switch (obj) {
+      {'defines': final options} => _parseOption(options),
+      final List<Object?> list => _parseOption(list),
+      _ => null,
+    };
+
+    final start = includeDefaults
+        ? CompilerDefines.defaults(targetOS == OS.windows)
+        : const CompilerDefines({});
+
+    return switch (additionalDefines) {
+      final added? => start.overrideWith(added),
+      null => start,
+    };
+  }
+
+  static bool _isTargetOSKey(Object? key) {
+    return key == 'default' || OS.values.any((os) => os.name == key);
+  }
+
+  static CompilerDefines _parseOption(Object? option) {
+    if (option is List) {
+      return _parseLines(option.cast());
+    } else if (option is Map) {
+      return CompilerDefines(option.cast());
+    } else {
+      throw ArgumentError.value(
+        option,
+        'option',
+        'Could not extract defines, should be an array or map of options',
+      );
+    }
+  }
+
+  static CompilerDefines _parseLines(Iterable<String> lines) {
+    final entries = <String, String?>{};
+    for (final line in lines) {
+      if (line.contains('=')) {
+        final [key, value] = line.trim().split('=');
+        entries[key] = value;
+      } else {
+        entries[line.trim()] = null;
+      }
+    }
+
+    return CompilerDefines(entries);
+  }
+
+  static CompilerDefines defaults(bool windows) {
+    final defines = _parseLines(const LineSplitter().convert(_defaultDefines));
+    if (windows) {
+      defines['SQLITE_API'] = '__declspec(dllexport)';
+    }
+    return defines;
+  }
+}
+
+final class CouldNotDownloadException {
+  final Uri uri;
+  final Object inner;
+
+  CouldNotDownloadException(this.uri, this.inner);
+
+  @override
+  String toString() {
+    final message = StringBuffer(
+      'By default, this package downloads a pre-compiled SQLite library.',
+    );
+
+    void line(String line) => message
+      ..writeln()
+      ..write(line);
+
+    line('This failed (attepted to download $uri).');
+
+    if (inner is HandshakeException) {
+      line(
+        'This looks like a certificate issue. If you need to use proxies, note '
+        'that HTTP_PROXY and related environment variables are respected.',
+      );
+
+      if (Platform.isWindows) {
+        line(
+          'Windows loads trusted certificates dynamically, which can cause '
+          'issues in Dart (dartbug.com/52266).',
+        );
+        line(
+          'Try running this command in PowerShell, and re-build your app '
+          'afterwards: Invoke-WebRequest $uri',
+        );
+      }
+    }
+
+    line(
+      'For alternatives to downloading SQLite, see '
+      'https://pub.dev/documentation/sqlite3/latest/topics/hook-topic.html',
+    );
+    line('Original cause: $inner');
+
+    return message.toString();
+  }
+}
+
+// Keep in sync with tool/compile_sqlite.dart
+const _defaultDefines = '''
+  SQLITE_ENABLE_DBSTAT_VTAB
+  SQLITE_ENABLE_FTS5
+  SQLITE_ENABLE_RTREE
+  SQLITE_ENABLE_MATH_FUNCTIONS
+  SQLITE_DQS=0
+  SQLITE_DEFAULT_MEMSTATUS=0
+  SQLITE_TEMP_STORE=2
+  SQLITE_MAX_EXPR_DEPTH=0
+  SQLITE_STRICT_SUBTYPE=1
+  SQLITE_OMIT_AUTHORIZATION
+  SQLITE_OMIT_DEPRECATED
+  SQLITE_OMIT_PROGRESS_CALLBACK
+  SQLITE_OMIT_SHARED_CACHE
+  SQLITE_OMIT_TCL_VARIABLE
+  SQLITE_OMIT_TRACE
+  SQLITE_USE_ALLOCA
+  SQLITE_ENABLE_SESSION
+  SQLITE_ENABLE_PREUPDATE_HOOK
+  SQLITE_UNTESTABLE
+  SQLITE_HAVE_ISNAN
+  SQLITE_HAVE_LOCALTIME_R
+  SQLITE_HAVE_LOCALTIME_S
+  SQLITE_HAVE_MALLOC_USABLE_SIZE
+  SQLITE_HAVE_STRCHRNUL
+  SQLITE_ENABLE_BATCH_ATOMIC_WRITE
+''';

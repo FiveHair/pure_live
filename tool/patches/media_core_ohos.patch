@@ -1,0 +1,286 @@
+diff --git a/packages/media_core/lib/util/platform_utils.dart b/packages/media_core/lib/util/platform_utils.dart
+index a1bf183..c08ad21 100644
+--- a/packages/media_core/lib/util/platform_utils.dart
++++ b/packages/media_core/lib/util/platform_utils.dart
+@@ -1,129 +1,152 @@
+-import 'dart:io';
+-import 'package:flutter/foundation.dart';
+-
+-/// Platform related utilities.
+-abstract final class PlatformUtils {
+-  PlatformUtils._();
+-
+-  /// Whether running on Android.
+-  static bool get isAndroid {
+-    return Platform.isAndroid;
+-  }
+-
+-  /// Whether running on iOS.
+-  static bool get isIOS {
+-    return Platform.isIOS;
+-  }
+-
+-  /// Whether running on Windows.
+-  static bool get isWindows {
+-    return Platform.isWindows;
+-  }
+-
+-  /// Whether running on macOS.
+-  static bool get isMacOS {
+-    return Platform.isMacOS;
+-  }
+-
+-  /// Whether running on Linux.
+-  static bool get isLinux {
+-    return Platform.isLinux;
+-  }
+-
+-  /// Whether running on Fuchsia.
+-  static bool get isFuchsia {
+-    return Platform.isFuchsia;
+-  }
+-
+-  /// Whether running on desktop.
+-  static bool get isDesktop {
+-    return isWindows || isMacOS || isLinux;
+-  }
+-
+-  /// Whether running on mobile.
+-  static bool get isMobile {
+-    return isAndroid || isIOS;
+-  }
+-
+-  /// Whether running on TV-like platform.
+-  ///
+-  /// Currently Android TV is detected as Android.
+-  /// Additional detection should live in platform layer.
+-  static bool get isTV {
+-    return false;
+-  }
+-
+-  /// Current operating system name.
+-  static String get operatingSystem {
+-    if (isAndroid) {
+-      return 'android';
+-    }
+-
+-    if (isIOS) {
+-      return 'ios';
+-    }
+-
+-    if (isWindows) {
+-      return 'windows';
+-    }
+-
+-    if (isMacOS) {
+-      return 'macos';
+-    }
+-
+-    if (isLinux) {
+-      return 'linux';
+-    }
+-
+-    if (isFuchsia) {
+-      return 'fuchsia';
+-    }
+-
+-    return 'unknown';
+-  }
+-
+-  /// Whether current platform supports file system paths.
+-  static bool get supportsFileSystem {
+-    return !kIsWeb;
+-  }
+-
+-  /// Whether current platform supports native window.
+-  static bool get supportsWindow {
+-    return isDesktop;
+-  }
+-
+-  /// Returns platform separator.
+-  static String get pathSeparator {
+-    if (isWindows) {
+-      return r'\';
+-    }
+-
+-    return '/';
+-  }
+-
+-  /// Returns a human-readable platform name.
+-  static String get displayName {
+-    switch (operatingSystem) {
+-      case 'android':
+-        return 'Android';
+-
+-      case 'ios':
+-        return 'iOS';
+-
+-      case 'windows':
+-        return 'Windows';
+-
+-      case 'macos':
+-        return 'macOS';
+-
+-      case 'linux':
+-        return 'Linux';
+-
+-      case 'fuchsia':
+-        return 'Fuchsia';
+-
+-      default:
+-        return 'Unknown';
+-    }
+-  }
+-}
++import 'dart:io';
++import 'package:flutter/foundation.dart';
++
++/// Platform related utilities.
++abstract final class PlatformUtils {
++  PlatformUtils._();
++
++  /// Whether running on Android.
++  static bool get isAndroid {
++    return Platform.isAndroid;
++  }
++
++  /// Whether running on iOS.
++  static bool get isIOS {
++    return Platform.isIOS;
++  }
++
++  /// Whether running on Windows.
++  static bool get isWindows {
++    return Platform.isWindows;
++  }
++
++  /// Whether running on macOS.
++  static bool get isMacOS {
++    return Platform.isMacOS;
++  }
++
++  /// Whether running on Linux.
++  static bool get isLinux {
++    return Platform.isLinux;
++  }
++
++  /// Whether running on Fuchsia.
++  static bool get isFuchsia {
++    return Platform.isFuchsia;
++  }
++
++  /// Whether running on OpenHarmony/HarmonyOS.
++  ///
++  /// Uses [Platform.operatingSystem] instead of a hypothetical
++  ///  so the package still compiles on SDKs without the
++  /// oh-flutter extension.
++  static bool get isOhos {
++    return Platform.operatingSystem == 'ohos';
++  }
++
++  /// Whether running on desktop.
++  ///
++  /// HarmonyOS stays out of the desktop family even in 2-in1 form: the
++  /// desktop windowing stack (window_manager/tray/acrylic) has no ohos
++  /// implementation, so desktop code paths must not select there.
++  static bool get isDesktop {
++    return isWindows || isMacOS || isLinux;
++  }
++
++  /// Whether running on mobile.
++  ///
++  /// ohos aligns with the mobile platform family: SystemChrome, immersive
++  /// fullscreen and the mobile presentation paths all work there.
++  static bool get isMobile {
++    return isAndroid || isIOS || isOhos;
++  }
++
++  /// Whether running on TV-like platform.
++  ///
++  /// Currently Android TV is detected as Android.
++  /// Additional detection should live in platform layer.
++  static bool get isTV {
++    return false;
++  }
++
++  /// Current operating system name.
++  static String get operatingSystem {
++    if (isAndroid) {
++      return 'android';
++    }
++
++    if (isIOS) {
++      return 'ios';
++    }
++
++    if (isWindows) {
++      return 'windows';
++    }
++
++    if (isMacOS) {
++      return 'macos';
++    }
++
++    if (isLinux) {
++      return 'linux';
++    }
++
++    if (isFuchsia) {
++      return 'fuchsia';
++    }
++
++    if (isOhos) {
++      return 'ohos';
++    }
++
++    return 'unknown';
++  }
++
++  /// Whether current platform supports file system paths.
++  static bool get supportsFileSystem {
++    return !kIsWeb;
++  }
++
++  /// Whether current platform supports native window.
++  static bool get supportsWindow {
++    return isDesktop;
++  }
++
++  /// Returns platform separator.
++  static String get pathSeparator {
++    if (isWindows) {
++      return r'\';
++    }
++
++    return '/';
++  }
++
++  /// Returns a human-readable platform name.
++  static String get displayName {
++    switch (operatingSystem) {
++      case 'android':
++        return 'Android';
++
++      case 'ios':
++        return 'iOS';
++
++      case 'windows':
++        return 'Windows';
++
++      case 'macos':
++        return 'macOS';
++
++      case 'linux':
++        return 'Linux';
++
++      case 'fuchsia':
++        return 'Fuchsia';
++
++      case 'ohos':
++        return 'HarmonyOS';
++
++      default:
++        return 'Unknown';
++    }
++  }
++}

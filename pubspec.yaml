@@ -216,6 +216,10 @@ dependency_overrides:
     path: D:/DEV/media-kit-predidit/media_kit
   media_kit_video:
     path: D:/DEV/media-kit-predidit/media_kit_video
+  # 鸿蒙移植：sqlite3 本地副本（hook 修复 ohos 被映射为 linux 时误用
+  # Linux 版本脚本导致 Windows 宿主路径错误）
+  sqlite3:
+    path: third_party/sqlite3_pkg
   # 鸿蒙移植：ffmpeg_kit 空实现（官方产物不支持 ohos，录制功能暂缺）
   ffmpeg_kit_extended_flutter:
     path: third_party/ffmpeg_kit_extended_flutter
@@ -251,6 +255,43 @@ dependency_overrides:
       url: https://gitcode.com/CPF-Flutter/flutter_packages.git
       path: packages/shared_preferences/shared_preferences_ohos
       ref: br_shared_preferences-v2.5.4_ohos
+  connectivity_plus:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_plus_plugins.git
+      path: packages/connectivity_plus/connectivity_plus
+      ref: br_connectivity_plus-v7.0.0_ohos
+  # 有 CPF 鸿蒙适配版的插件全部替换（版本与 pub 原版可能降一个大版本，
+  # API 兼容性已在应用层核对：package_info/device_info 用法跨版本一致；
+  # share_plus 13→12 的 SharePlus.instance 调用点已同步改为 v12 API）
+  battery_plus:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_plus_plugins.git
+      path: packages/battery_plus/battery_plus
+      ref: br_battery_plus-v7.0.0_ohos
+  device_info_plus:
+    path: third_party/device_info_plus
+  # package_info_plus：CPF 9.0.0_ohos vendor 副本（win32 约束已放宽兼容 6.x）
+  package_info_plus:
+    path: third_party/package_info_plus
+  # share_plus：CPF 12.0.1_ohos vendor 副本（原分支锁 win32 ^5.5.3 与应用
+  # win32 6.x 冲突，已放宽为 >=5.5.3 <7.0.0；win32 6 API 兼容性已核对）
+  share_plus:
+    path: third_party/share_plus
+  android_intent_plus:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_plus_plugins.git
+      path: packages/android_intent_plus
+      ref: br_android_intent_plus-v6.0.0_ohos
+  url_launcher:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_packages.git
+      path: packages/url_launcher/url_launcher
+      ref: br_url_launcher-v6.3.2_ohos
+  url_launcher_ohos:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_packages.git
+      path: packages/url_launcher/url_launcher_ohos
+      ref: br_url_launcher-v6.3.2_ohos
   # media_kit 链与 better_player_plus 对 wakelock_plus 的约束无交集,
   # 与 media_core 工作区同样以 override 对齐
   wakelock_plus: ^1.7.0
@@ -342,3 +383,16 @@ ffmpeg_kit_extended_config:
   type: base
   gpl: false
   small: false
+
+# 鸿蒙移植：sqlite3 用本地源码 + OHOS 工具链参数编译。
+# pub 预编译产物的 libsqlite3.so 引用 fcntl64 符号，HarmonyOS 26 musl 无此符号，
+# 加载即报 "Error relocating libsqlite3.so: fcntl64: symbol not found"。
+hooks:
+  user_defines:
+    sqlite3:
+      source: source
+      path: third_party/sqlite3/sqlite3.c
+      additional_includes:
+        - third_party/sqlite3
+      # ohos 的 target/sysroot 由 sqlite3 hook 内部从工具链路径推导
+      # （见 third_party/sqlite3_pkg/hook/build.dart），此处只留无空格的宏

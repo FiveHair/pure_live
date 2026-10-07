@@ -74,7 +74,7 @@ class MobileManager {
             statusBarColor: Colors.transparent,
           ),
         );
-      } else if (Platform.isAndroid) {
+      } else if (Platform.isAndroid || PlatformUtils.isOhos) {
         SystemChrome.setSystemUIOverlayStyle(
           SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,

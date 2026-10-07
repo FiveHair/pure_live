@@ -74,3 +74,10 @@ ohos/node_modules/
 ohos/package.json
 ohos/package-lock.json
 ohos/.hvigor/
+
+# third_party vendor 包：剥离示例与构建产物
+third_party/*/example/
+third_party/*/ohos/build/
+third_party/*/ohos/oh_modules/
+third_party/*/ohos/.cxx/
+third_party/*/ohos/.test/

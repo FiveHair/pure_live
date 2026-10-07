@@ -49,7 +49,11 @@ class VolumeSettingsController extends GetxController {
   }
 
   double get currentPlatformDefaultVolume {
-    return Platform.isAndroid || Platform.isIOS
+    // ohos 走播放器音量路径，默认值对齐移动端（0.5）而非桌面满音量
+    final mobileLike = Platform.isAndroid ||
+        Platform.isIOS ||
+        Platform.operatingSystem == 'ohos';
+    return mobileLike
         ? normalizeVolume(defaultMobileVolume.v, fallback: 0.5)
         : normalizeVolume(defaultDesktopVolume.v, fallback: 1.0);
   }
@@ -57,7 +61,9 @@ class VolumeSettingsController extends GetxController {
   void setCurrentPlatformDefaultVolume(double volume) {
     if (!volume.isFinite) return;
     final v = volume.clamp(0.0, 1.0).toDouble();
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (Platform.isAndroid ||
+        Platform.isIOS ||
+        Platform.operatingSystem == 'ohos') {
       defaultMobileVolume.v = v;
     } else {
       defaultDesktopVolume.v = v;

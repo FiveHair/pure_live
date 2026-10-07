@@ -32,6 +32,43 @@ class PlatformUtils {
 
   static bool get isDesktop => Platform.isWindows || Platform.isLinux || Platform.isMacOS || (isOhos && isOhosPC);
 
+  /// 鸿蒙原生全屏（横屏/竖屏/跟随系统），对应 MethodCall.ets 的
+  /// enterFullscreen：隐藏状态栏与小白条、锁定方向、窗口最大化。
+  /// SystemChrome 沉浸模式在鸿蒙上无法完整隐藏小白条，故走原生实现。
+  static Future<void> ohosEnterFullscreen(String orientation) async {
+    if (!isOhos) return;
+    try {
+      await _ohosChannel.invokeMethod('enterFullscreen', {'orientation': orientation});
+    } catch (_) {}
+  }
+
+  /// 退出鸿蒙原生全屏：恢复状态栏/小白条、回竖屏（手机）、恢复窗口
+  static Future<void> ohosExitFullscreen() async {
+    if (!isOhos) return;
+    try {
+      await _ohosChannel.invokeMethod('exitFullscreen');
+    } catch (_) {}
+  }
+
+  /// 鸿蒙仅切换屏幕方向（不动系统栏/窗口状态）。退出全屏流程会先
+  /// exitFullscreen 恢复系统栏、再 restorePortrait，若后者复用
+  /// enterFullscreen 会把刚恢复的系统栏再藏一次，故方向恢复走本方法。
+  static Future<void> ohosSetOrientation(String orientation) async {
+    if (!isOhos) return;
+    try {
+      await _ohosChannel.invokeMethod('setOrientation', {'orientation': orientation});
+    } catch (_) {}
+  }
+
+  /// 返回桌面（应用转后台不销毁）。move_to_desktop 插件无 ohos 实现，
+  /// 主界面返回键在鸿蒙上走原生 moveAbilityToBackground。
+  static Future<void> ohosMoveToBackground() async {
+    if (!isOhos) return;
+    try {
+      await _ohosChannel.invokeMethod('moveToBackground');
+    } catch (_) {}
+  }
+
   static bool get isDesktopNotMac =>
       (Platform.isWindows || Platform.isLinux || (isOhos && isOhosPC)) && !Platform.isMacOS;
 

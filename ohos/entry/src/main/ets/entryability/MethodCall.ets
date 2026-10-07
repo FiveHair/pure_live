@@ -41,14 +41,36 @@ export default class MethodCallPlugin implements FlutterPlugin, AbilityAware {
       onMethodCall: (call: MethodCall, result: MethodResult) => {
         switch (call.method) {
           case "enterFullscreen": {
-            let needSet = Boolean(call.argument("needSet"));
-            this.enterFullScreen(needSet);
+            // orientation: 'landscape' | 'portrait' | 'auto'；旧参数 needSet
+            // (true=landscape) 保留兼容
+            let orientation = String(call.argument("orientation") ?? "");
+            if (orientation == "") {
+              orientation = Boolean(call.argument("needSet")) ? "landscape" : "auto";
+            }
+            this.enterFullScreen(orientation);
             result.success("");
             break;
           }
           case "exitFullscreen": {
             this.exitFullScreen();
             result.success("");
+            break;
+          }
+          case "setOrientation": {
+            // 仅切换方向（不动系统栏/窗口状态），供退出全屏后的竖屏恢复
+            // 与方向策略使用，避免恢复流程再次隐藏系统栏
+            let orientation = String(call.argument("orientation") ?? "auto");
+            this.setOrientationOnly(orientation);
+            result.success("");
+            break;
+          }
+          case "moveToBackground": {
+            // 返回键退回桌面（应用转后台不销毁）
+            this.context?.moveAbilityToBackground().then(() => {
+              result.success(true);
+            }).catch((e: BusinessError) => {
+              result.error(`${e.code}`, e.message, null);
+            });
             break;
           }
           case "checkOhosIsDesktop": {
@@ -82,22 +104,26 @@ export default class MethodCallPlugin implements FlutterPlugin, AbilityAware {
     })
   }
 
-  private enterFullScreen(needSet: boolean): void {
+  private enterFullScreen(orientation: string): void {
     window.getLastWindow(this.context).then((lastWindow) => {
       lastWindow.setSpecificSystemBarEnabled("status", false, true);
       lastWindow.setSpecificSystemBarEnabled("navigationIndicator", false, true);
-      if (needSet) {
-        // 官方推荐视频全屏用 USER_ROTATION_LANDSCAPE：临时旋转到横屏后
-        // 跟随传感器，且"可旋转方向受系统判定"（窗口旋转最佳实践）。
-        // 方形外屏（宽高比接近 1:1，如 Pura X 外屏）不存在"横屏"，
-        // 强制横屏族（AUTO_ROTATION_LANDSCAPE）会令系统对方形窗口强行
-        // 旋转，表现为 UI 整体偏移、右缘控件被裁——保持系统判定即可。
+      if (orientation == "landscape" || orientation == "portrait") {
+        // 官方推荐视频全屏用 USER_ROTATION_*：临时旋转后跟随传感器，
+        // 且"可旋转方向受系统判定"（窗口旋转最佳实践）。
+        // 方形外屏（宽高比接近 1:1，如 Pura X 外屏）不存在"横屏/竖屏"，
+        // 强制旋转族会令系统对方形窗口强行旋转，表现为 UI 整体偏移、
+        // 右缘控件被裁——保持系统判定即可。
         const d = display.getDefaultDisplaySync();
         const ratio = d.width / d.height;
         const squareLike = ratio > 0.9 && ratio < 1.1;
-        lastWindow.setPreferredOrientation(squareLike
-          ? window.Orientation.AUTO_ROTATION_UNSPECIFIED
-          : window.Orientation.USER_ROTATION_LANDSCAPE);
+        if (squareLike) {
+          lastWindow.setPreferredOrientation(window.Orientation.AUTO_ROTATION_UNSPECIFIED);
+        } else if (orientation == "landscape") {
+          lastWindow.setPreferredOrientation(window.Orientation.USER_ROTATION_LANDSCAPE);
+        } else {
+          lastWindow.setPreferredOrientation(window.Orientation.USER_ROTATION_PORTRAIT);
+        }
       } else {
         lastWindow.setPreferredOrientation(window.Orientation.AUTO_ROTATION_UNSPECIFIED);
       }
@@ -111,6 +137,27 @@ export default class MethodCallPlugin implements FlutterPlugin, AbilityAware {
       lastWindow.maximize();
     }).catch((e: BusinessError) => {
       console.error(`enterFullscreen failed. Code: ${e.code}, message: ${e.message}`);
+    })
+  }
+
+  private setOrientationOnly(orientation: string): void {
+    window.getLastWindow(this.context).then((lastWindow) => {
+      if (orientation == "landscape" || orientation == "portrait") {
+        const d = display.getDefaultDisplaySync();
+        const ratio = d.width / d.height;
+        const squareLike = ratio > 0.9 && ratio < 1.1;
+        if (squareLike) {
+          lastWindow.setPreferredOrientation(window.Orientation.AUTO_ROTATION_UNSPECIFIED);
+        } else if (orientation == "landscape") {
+          lastWindow.setPreferredOrientation(window.Orientation.USER_ROTATION_LANDSCAPE);
+        } else {
+          lastWindow.setPreferredOrientation(window.Orientation.USER_ROTATION_PORTRAIT);
+        }
+      } else {
+        lastWindow.setPreferredOrientation(window.Orientation.AUTO_ROTATION_UNSPECIFIED);
+      }
+    }).catch((e: BusinessError) => {
+      console.error(`setOrientation failed. Code: ${e.code}, message: ${e.message}`);
     })
   }
 

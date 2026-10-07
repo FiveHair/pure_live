@@ -6,6 +6,7 @@ import 'package:media_core/media_core.dart';
 import 'package:media_core_fullscreen/media_core_fullscreen.dart';
 import 'package:pure_live/core/index.dart';
 import 'package:pure_live/core/player/kernel/player_kernel_service.dart';
+import 'package:pure_live/core/platform/platform_utils.dart' as ohos_plat;
 
 @visibleForTesting
 bool supportsOrientationLockForLogicalDisplay(Size logicalDisplaySize) {
@@ -87,6 +88,9 @@ class WindowService {
     try {
       if (kIsWeb) {
         await document.documentElement?.requestFullscreen();
+      } else if (ohos_plat.PlatformUtils.isOhos) {
+        // 鸿蒙：原生 enterFullscreen（隐藏系统栏 + 横屏 + 最大化 + 智慧多窗）
+        await ohos_plat.PlatformUtils.ohosEnterFullscreen('landscape');
       } else if (Platform.isAndroid || Platform.isIOS) {
         if (!_canApplyMobileOrientationLock()) return;
         await SystemChrome.setPreferredOrientations([
@@ -103,17 +107,32 @@ class WindowService {
   }
 
   Future<void> verticalScreen() async {
+    if (ohos_plat.PlatformUtils.isOhos) {
+      // 仅锁竖屏（系统栏状态保持现状）：竖屏全屏流程中系统栏已由
+      // enterFullscreen 隐藏；退出全屏后的竖屏恢复则要求不重藏系统栏
+      await ohos_plat.PlatformUtils.ohosSetOrientation('portrait');
+      return;
+    }
     if (!_canApplyMobileOrientationLock()) return;
     await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   }
 
   Future<void> followSystemOrientation() async {
+    if (ohos_plat.PlatformUtils.isOhos) {
+      await ohos_plat.PlatformUtils.ohosSetOrientation('auto');
+      return;
+    }
     if (!(Platform.isAndroid || Platform.isIOS)) return;
     await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[]);
   }
 
   Future<void> doEnterFullScreen() async {
     if (kIsWeb) return;
+    // 鸿蒙：先走原生 enterFullscreen（系统栏 + 最大化），后续 landScape/
+    // verticalScreen 会以最终方向再次调用（幂等）
+    if (ohos_plat.PlatformUtils.isOhos) {
+      await ohos_plat.PlatformUtils.ohosEnterFullscreen('auto');
+    }
     // One driver request serves both platform families: the driver performs
     // the desktop window transition (through PureLiveFullscreenWindow, with
     // its frameless guard) and the mobile immersive switch itself.
@@ -123,7 +142,10 @@ class WindowService {
 
   Future<void> doExitFullScreen() async {
     try {
-      if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      if (ohos_plat.PlatformUtils.isOhos) {
+        // 恢复系统栏/竖屏/窗口状态（跟随 simple_live 的已验证实现）
+        await ohos_plat.PlatformUtils.ohosExitFullscreen();
+      } else if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
         // Host-owned policy on mobile: the status bar styling and the
         // orientation release are this app's theming and orientation rules.
         // The system UI mode itself is restored by the driver below.

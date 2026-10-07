@@ -18,6 +18,10 @@ class FavoritePage extends GetView<FavoriteController> {
       builder: (context, constraint) {
         return Obx(() {
           bool showAction = Get.width <= 680;
+          // 窄外屏（如 Pura X 外屏）：AppBar 内三个状态 Tab 的等分布局
+          // 加上菜单按钮与操作按钮放不下，RenderFlex 溢出；改为按内容
+          // 宽度排布并允许横向滚动，同时收紧 Tab 内边距
+          final narrowTitle = constraint.maxWidth < 420;
           final availableSitesList = controller.availableFavoriteSites;
           final siteKey = ValueKey(availableSitesList.map((e) => e.id).join('|'));
 
@@ -29,8 +33,11 @@ class FavoritePage extends GetView<FavoriteController> {
               title: ScrollableTabBar(
                 key: const ValueKey('favorite-status-tabs'),
                 controller: controller.tabController,
-                isScrollable: false,
+                isScrollable: narrowTitle,
                 tabAlignment: TabAlignment.center,
+                labelPadding: narrowTitle
+                    ? const EdgeInsets.symmetric(horizontal: 8)
+                    : const EdgeInsets.symmetric(horizontal: 16),
                 physics: const PureLiveBoundedScrollPhysics(),
                 tabs: [
                   Tab(text: i18n("online_room_title")),

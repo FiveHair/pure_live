@@ -95,6 +95,18 @@ jobs:
           git checkout 803c4a27912091db6f839d48d1b984a0d9f588c7
         shell: bash
 
+      # 伴生仓库的鸿蒙适配补丁（源仓库不含这些改动）
+      - name: Apply companion repo patches
+        run: |
+          git -C "$RUNNER_TEMP/media_core" apply "$GITHUB_WORKSPACE/tool/patches/media_core_ohos.patch"
+          git -C "$RUNNER_TEMP/media-kit-predidit" apply "$GITHUB_WORKSPACE/tool/patches/media_kit_ohos.patch"
+          # CPF 版 libmpv（openharmony EGL 上下文，97MB）：从本仓库 Release 资产获取
+          mkdir -p "$RUNNER_TEMP/media-kit-predidit/media_kit/hook/ohos_libmpv"
+          curl -fL --retry 3 -o "$RUNNER_TEMP/media-kit-predidit/media_kit/hook/ohos_libmpv/libmpv.so.2" \
+            https://github.com/FiveHair/pure_live/releases/download/ohos-assets/libmpv.so.2
+          ls -la "$RUNNER_TEMP/media-kit-predidit/media_kit/hook/ohos_libmpv/"
+        shell: bash
+
       - name: Rewrite local paths to CI locations
         run: |
           W="$(cygpath -m "$RUNNER_TEMP")"
@@ -107,7 +119,7 @@ jobs:
 
       # hvigorw.bat 垫片按 TOOL_HOME/tools/hvigor 布局查找工具链；
       # pub get 与 build 同步骤执行，避免环境切换触发 SDK 版本重解析
-      - name: Build HAP (debug, unsigned)
+      - name: Build HAP (debug + release, unsigned)
         run: |
           export TOOL_HOME="$(cygpath -m "$HOME/ohos-sdk/command-line-tools")"
           export DEVECO_SDK_HOME="$(cygpath -m "$HOME/ohos-sdk/command-line-tools/sdk")"
@@ -120,19 +132,26 @@ jobs:
           # 未签名构建在 HAP 生成后会因签名检查 throwToolExit(1)，
           # 以产物存在与否判定成败（verify 步骤兜底）
           flutter build hap --debug || true
-          ls -la ohos/entry/build/default/outputs/default/ 2>/dev/null || true
+          cp ./ohos/entry/build/default/outputs/default/entry-default-unsigned.hap \
+             pure_live_ohos_debug_unsigned.hap || true
+          # release 需跳过 icon tree shaking：host 工具 const_finder 快照
+          # 与定制 dart-sdk（kernel 138）SDK hash 不匹配（上游未重发 host 工具包）
+          flutter build hap --release --no-tree-shake-icons || true
         working-directory: ${{ github.workspace }}
         shell: bash
 
       - name: Verify HAP libraries
-        run: python tool_verify_hap.py ./ohos/entry/build/default/outputs/default/entry-default-unsigned.hap
+        run: |
+          python tool_verify_hap.py ./pure_live_ohos_debug_unsigned.hap || \
+            python tool_verify_hap.py ./ohos/entry/build/default/outputs/default/entry-default-unsigned.hap
         working-directory: ${{ github.workspace }}
         shell: bash
 
       - name: Package output
         run: |
           cp ./ohos/entry/build/default/outputs/default/entry-default-unsigned.hap \
-             pure_live_ohos_debug_unsigned.hap
+             pure_live_ohos_release_unsigned.hap 2>/dev/null || true
+          ls -la pure_live_ohos_*.hap || true
         working-directory: ${{ github.workspace }}
         shell: bash
 
@@ -140,4 +159,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pure_live_ohos
-          path: pure_live_ohos_debug_unsigned.hap
+          path: |
+            pure_live_ohos_debug_unsigned.hap
+            pure_live_ohos_release_unsigned.hap

@@ -19,6 +19,7 @@ import 'package:pure_live/domains/live/presentation/favorite/favorite_controller
 import 'package:pure_live/domains/live/domain/global_player_service.dart';
 import 'package:pure_live/domains/live/presentation/popular/popular_controller.dart';
 import 'package:pure_live/domains/live/presentation/areas/areas_controller.dart';
+import 'package:pure_live/core/platform/platform_utils.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({
@@ -228,6 +229,11 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
 
   void onBackButtonPressed(bool didPop, _) {
     if (!didPop) {
+      // move_to_desktop 无 ohos 实现，鸿蒙走原生 moveAbilityToBackground
+      if (PlatformUtils.isOhos) {
+        PlatformUtils.ohosMoveToBackground();
+        return;
+      }
       MoveToDesktop().moveToDesktop();
     }
   }

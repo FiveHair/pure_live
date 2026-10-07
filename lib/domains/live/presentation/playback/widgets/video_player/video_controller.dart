@@ -27,6 +27,7 @@ import 'package:pure_live/domains/live/presentation/playback/controllers/live_pl
 import 'package:pure_live/domains/live/presentation/playback/widgets/danmaku/danmaku_message_actions.dart';
 import 'package:pure_live/domains/live/presentation/playback/widgets/danmaku/danmaku_settings_source.dart';
 import 'package:pure_live/domains/live/presentation/playback/widgets/layout/portrait_fullscreen_interaction.dart';
+import 'package:pure_live/core/platform/platform_utils.dart' as ohos_plat;
 
 typedef AudioOnlyCallback = Future<void> Function(bool value);
 
@@ -41,11 +42,14 @@ enum PlayerStatus { idle, loading, playing, error, disposed }
 
 // 平台工具类
 class PlatformHelper {
-  static bool get isMobile => Platform.isAndroid || Platform.isIOS;
+  // ohos 对齐移动端交互；音量/亮度插件（volume_controller、
+  // screen_brightness_*）无 ohos 实现，保持关闭走播放器音量回退路径。
+  static bool get _isOhos => Platform.operatingSystem == 'ohos';
+  static bool get isMobile => Platform.isAndroid || Platform.isIOS || _isOhos;
   static bool get isDesktop => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
   static bool get supportsBrightness => Platform.isAndroid || Platform.isIOS;
   static bool get supportsVolumeController => Platform.isAndroid || Platform.isIOS;
-  static bool get supportsBatteryMonitoring => Platform.isAndroid || Platform.isIOS;
+  static bool get supportsBatteryMonitoring => Platform.isAndroid || Platform.isIOS || _isOhos;
 }
 
 // 弹幕管理器
@@ -1470,7 +1474,7 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
   }
 
   Future<void> enterFullScreen({bool forceLandscape = false}) async {
-    final isMobile = Platform.isAndroid || Platform.isIOS;
+    final isMobile = Platform.isAndroid || Platform.isIOS || ohos_plat.PlatformUtils.isOhos;
     _fullscreenOrientationRestore.begin(restorePortraitOnExit: isMobile && forceLandscape);
     await WindowService().doEnterFullScreen();
     GlobalPlayerService.instance.player.isSystemFullscreen.value = true;
@@ -1479,7 +1483,7 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     // landScape there issued a second setFullScreen(true) while the first
     // native transition was still running, producing inconsistent work-area
     // bounds on Windows systems with a side taskbar.
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (Platform.isAndroid || Platform.isIOS || ohos_plat.PlatformUtils.isOhos) {
       if (forceLandscape) {
         await WindowService().landScape();
       } else {
@@ -1570,7 +1574,7 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
   Future<void> applyFullscreenOrientationPolicy() async {
     if (_isDisposed ||
         !GlobalPlayerService.instance.player.isSystemFullscreen.value ||
-        !(Platform.isAndroid || Platform.isIOS)) {
+        !(Platform.isAndroid || Platform.isIOS || ohos_plat.PlatformUtils.isOhos)) {
       return;
     }
     if (_livePlayController.state.value.ui.screenMode == VideoMode.portraitFullscreen) {
