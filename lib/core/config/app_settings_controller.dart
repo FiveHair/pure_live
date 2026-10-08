@@ -60,6 +60,8 @@ class AppSettingsController extends GetxController {
   // still allowing users to hide either entry explicitly.
   final RxBool enableMultiView = hiveBool('enableMultiView', true);
   final RxBool enableNewWindowPlay = hiveBool('enableNewWindowPlay', true);
+  // 录制功能总开关：关闭时隐藏全部录制入口并停用录制（含任务恢复与开播监控）
+  final RxBool enableRecorder = hiveBool('enableRecorder', true);
 
   AppRefreshRateMode get refreshRateMode => AppRefreshRateMode.parse(refreshRateModeName.v);
 
@@ -190,7 +192,6 @@ class AppSettingsController extends GetxController {
   }
 
   // ======================
-  // 备份/恢复
   // ======================
   Map<String, dynamic> toJson() {
     return {
@@ -212,6 +213,7 @@ class AppSettingsController extends GetxController {
       'savedMenuIds': savedMenuIds.v,
       'enableMultiView': enableMultiView.v,
       'enableNewWindowPlay': enableNewWindowPlay.v,
+      'enableRecorder': enableRecorder.v,
     };
   }
 
@@ -242,6 +244,7 @@ class AppSettingsController extends GetxController {
       ),
       'enableMultiView': typed<bool>(json['enableMultiView'] ?? true),
       'enableNewWindowPlay': typed<bool>(json['enableNewWindowPlay'] ?? true),
+      'enableRecorder': typed<bool>(json['enableRecorder'] ?? true),
     };
   }
 

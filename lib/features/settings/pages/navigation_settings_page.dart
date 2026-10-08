@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:remixicon/remixicon.dart';
 import 'package:pure_live/core/index.dart';
 import 'package:pure_live/core/consts/app_consts.dart';
 import 'package:pure_live/core/platform/platform_utils.dart';
 import 'package:pure_live/core/config/app_settings_controller.dart';
+import 'package:pure_live/domains/recorder/presentation/pages/recorder/recorder_controller.dart';
 
 class NavigationSettingsPage extends StatelessWidget {
   const NavigationSettingsPage({super.key});
@@ -11,8 +14,13 @@ class NavigationSettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // 1. 定义所有菜单（固定不变）
-    final allMenus = [HomeMenu.favorites, HomeMenu.popular, HomeMenu.areas, HomeMenu.record];
+    final allMenus = [
+      HomeMenu.favorites,
+      HomeMenu.popular,
+      HomeMenu.areas,
+      // 录制总开关关闭时不允许在导航里保留录制入口
+      if (SettingsService.to.app.enableRecorder.v) HomeMenu.record,
+    ];
 
     return Scaffold(
       appBar: AppBar(title: Text(i18n("navigation_display_settings"))),
@@ -20,6 +28,24 @@ class NavigationSettingsPage extends StatelessWidget {
         physics: const PureLiveScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
+          context.buildGroupTitle(i18n("recorder_title")),
+          context.buildModernCard([
+            context.buildSwitchTile(
+              title: i18n("enable_recorder_module"),
+              subtitle: i18n("enable_recorder_module_desc"),
+              value: SettingsService.to.app.enableRecorder,
+              icon: Remix.record_circle_line,
+              onChanged: (enabled) {
+                SettingsService.to.app.enableRecorder.v = enabled;
+                if (!enabled) {
+                  // 关闭即停用：停掉进行中的录制任务（任务列表保留在数据层）
+                  final recorder = Get.find<RecorderController>();
+                  unawaited(recorder.stopAllWhenDisabled());
+                }
+              },
+            ),
+          ]),
+          const SizedBox(height: 16),
           if (PlatformUtils.isWindows) ...[
             context.buildGroupTitle(i18n("multiview_title")),
             context.buildModernCard([
@@ -36,19 +62,14 @@ class NavigationSettingsPage extends StatelessWidget {
           const SizedBox(height: 16),
           context.buildGroupTitle(i18n("navigation_display_settings")),
           Obx(() {
-            // 2. 关键：按 savedMenuIds 的顺序给 allMenus 排序
             final savedOrder = AppSettingsController.normalizeMenuIds(SettingsService.to.app.savedMenuIds.v);
-            // 给每个菜单一个排序权重：在 savedMenuIds 里的位置，不在里面的排到最后
             final sortedMenus = List<HomeMenu>.from(allMenus);
             sortedMenus.sort((a, b) {
               final indexA = savedOrder.indexOf(a.id);
               final indexB = savedOrder.indexOf(b.id);
-              // 都在列表里：按 savedOrder 顺序排
               if (indexA != -1 && indexB != -1) return indexA.compareTo(indexB);
-              // 只有一个在列表里：在列表里的排前面
               if (indexA != -1) return -1;
               if (indexB != -1) return 1;
-              // 都不在：保持原始顺序
               return 0;
             });
 
@@ -81,7 +102,6 @@ class NavigationSettingsPage extends StatelessWidget {
                 },
                 itemBuilder: (context, index) {
                   final menu = sortedMenus[index];
-                  // 开关状态直接从 savedMenuIds 判断
                   final isVisible = SettingsService.to.app.savedMenuIds.v.contains(menu.id);
 
                   String titleText = "";

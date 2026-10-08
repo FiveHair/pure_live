@@ -1,9 +1,8 @@
-import 'package:easy_localization/easy_localization.dart';
-import 'package:pure_live/core/index.dart';
-import 'package:pure_live/domains/wallpaper/data/wallpaper_repository.dart';
-import 'package:pure_live/domains/wallpaper/domain/wallpaper_catalog.dart';
-import 'package:pure_live/domains/wallpaper/presentation/wallpaper_items_page.dart';
 import 'package:remixicon/remixicon.dart';
+import 'package:pure_live/core/index.dart';
+import 'package:pure_live/domains/wallpaper/domain/wallpaper_catalog.dart';
+import 'package:pure_live/domains/wallpaper/data/wallpaper_repository.dart';
+import 'package:pure_live/domains/wallpaper/presentation/wallpaper_items_page.dart';
 
 /// The groups of one picture source.
 ///
@@ -26,17 +25,18 @@ class WallpaperGalleryPage extends StatelessWidget {
 
     final List<WallpaperGroup> groups = source.visibleGroups;
     return Scaffold(
-      appBar: AppBar(title: Text(source.localizedName(context.locale.languageCode))),
+      appBar: AppBar(title: Text(i18n(source.nameKey))),
       body: groups.isEmpty
           ? AppStatusView(type: AppStatusType.empty, title: i18n('background_no_category'), subtitle: '')
           : ListView(
+              physics: const PureLiveScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
               children: <Widget>[
                 context.buildModernCard(<Widget>[
                   for (final WallpaperGroup group in groups)
                     context.buildTile(
                       icon: Remix.image_2_line,
-                      title: group.localizedName(context.locale.languageCode),
+                      title: i18n(group.nameKey),
                       trailing: const Icon(Remix.arrow_right_s_line),
                       onTap: () => Get.to<void>(() => WallpaperItemsPage(sourceId: source.id, groupId: group.id)),
                     ),

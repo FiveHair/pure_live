@@ -4,10 +4,9 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:media_core/media_core.dart';
 import 'package:pure_live/core/player/kernel/player_consts.dart';
 import 'package:pure_live/core/player/presentation/fullscreen_window.dart';
+import 'package:pure_live/core/player/presentation/kernel_floating_window_presenter.dart';
 import 'package:pure_live/domains/live/domain/global_player_service.dart';
 import 'package:media_core_floating/media_core_floating.dart';
-// media_core_media_kit 里也有一个 PlayerConsts（mpv 词表）；本文件用的是本包的
-// 引擎表，隐藏同名导入以消除歧义。
 import 'package:media_core_media_kit/media_core_media_kit.dart' hide PlayerConsts;
 import 'package:pure_live/core/player/presentation/windows_pip_driver.dart';
 import 'package:pure_live/core/player/kernel/owned_input_opener.dart';
@@ -16,6 +15,7 @@ import 'package:media_core_ijk_player/media_core_ijk_player.dart';
 import 'package:media_core_logging/media_core_logging.dart' as mlog;
 import 'package:media_core_mediasession/media_core_mediasession.dart';
 import 'package:pure_live/core/player/kernel/media_kit_live_properties.dart';
+import 'package:pure_live/core/player/kernel/open_volume.dart';
 import 'package:media_core_better_player/media_core_better_player.dart';
 import 'package:pure_live/core/config/player_settings_controller.dart';
 
@@ -41,11 +41,14 @@ class PlayerKernelService {
         MediaKitAdapterFactory(
           playerConfiguration: MediaKitLiveProperties.playerConfiguration(),
           customInputOpener: openOwnedInputOnKernelPlayer,
-          // 装配期的选项整个引擎一份；代理、容器格式和直播缓存策略是每条源一份，
-          // 只能在打开前写。mpv 日志转发也挂在这里——这是不改 media_core 又能拿到
-          // 引擎实例的唯一时机。
           beforeOpen: (player, source) async {
             attachMpvLogForwarder(player);
+            final initialVolume = OpenVolume.resolve(source);
+            if (initialVolume != null) {
+              try {
+                await player.setVolume(initialVolume * 100.0);
+              } catch (_) {}
+            }
             await MediaKitLiveProperties.applyToSource(player, source);
           },
           videoControllerConfigurationBuilder: MediaKitLiveProperties.buildVideoControllerConfiguration,
@@ -55,16 +58,13 @@ class PlayerKernelService {
         ).registration(),
       );
 
-    // ijk 与 better_player 只在移动端注册：桌面端发布的只有 libmpv，引擎选择里
-    // 也没有这两个键。判定与选择列表共用 PlayerConsts.mobileOnlyEnginesAvailable，
-    // 所以不会出现"界面选得到但内核没注册"。
     if (PlayerConsts.mobileOnlyEnginesAvailable(defaultTargetPlatform)) {
       kernel
         ..registerBackend(const FlvLzcPlayerAdapterFactory().registration())
         ..registerBackend(const BetterPlayerAdapterFactory().registration());
     }
 
-    return kernel..attachPresentation(
+    kernel.attachPresentation(
       PresentationDriverChain(
         bindings: [
           PresentationDriverBinding(
@@ -76,10 +76,22 @@ class PlayerKernelService {
         ],
       ),
     );
+    // The driver ships with a null presenter, so a `floating` request was
+    // silently dropped. Install the host surface so any host that calls
+    // kernel.enterFloating (the local video player) actually opens a window for
+    // that handle. The live room's own floating path never reaches the driver,
+    // so this only enables the kernel-driven path.
+    floatingDriver.updatePresenter(KernelFloatingWindowPresenter(kernel: kernel, driver: floatingDriver));
+    return kernel;
   }
 
   static Future<void> ensureInitialized() async {
     MediaKitPlayerAdapter.ensureInitialized();
+
+    // The desktop chrome asks the window, not a player, whether the picture is
+    // compact, and the driver is what makes it compact. Start mirroring it
+    // before any player can ask for the mode.
+    observeWindowsPipState();
 
     // Output settings ride two rails: mpv-property changes (hwdec, tuning
     // table, shaders, ao, ...) apply to the live engine through engine

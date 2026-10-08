@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:html/parser.dart' as html;
+import 'package:pure_live/core/network/site_transport_failure.dart';
 
 enum XiaohongshuFailure {
   transport,
@@ -16,9 +17,11 @@ enum XiaohongshuFailure {
   mediaUnavailable,
 }
 
-class XiaohongshuException implements Exception {
+class XiaohongshuException implements Exception, SiteTransportFailure {
   const XiaohongshuException(this.kind);
   final XiaohongshuFailure kind;
+  @override
+  bool get isSiteUnreachable => kind == XiaohongshuFailure.transport;
   @override
   String toString() => 'Xiaohongshu ${kind.name}';
 }
@@ -143,8 +146,6 @@ class XiaohongshuShare {
 
   static XiaohongshuShare parseState(Map<String, dynamic> state, {required String roomId}) {
     validateRoomId(roomId);
-    // 页面的 `pageStatus: error` 就是平台自己的「房间不存在」（NotFound），等价于
-    // HTTP 404（上游 16-1：搜索遇到它返回空，进房与刷新仍然如实报 NotFound）。
     if (state['pageStatus'] == 'error') throw const XiaohongshuException(XiaohongshuFailure.missing);
     if (state['pageStatus'] != 'success') throw const XiaohongshuException(XiaohongshuFailure.schema);
     final data = _object(state['roomData']);

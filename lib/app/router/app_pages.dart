@@ -25,6 +25,7 @@ import 'package:pure_live/domains/live/presentation/hot_areas/hot_areas_page.dar
 import 'package:pure_live/domains/live/presentation/shield/danmu_shield_page.dart';
 import 'package:pure_live/domains/live/presentation/multiview/multiview_page.dart';
 import 'package:pure_live/domains/account/presentation/account/yy/yy_cookie_page.dart';
+import 'package:pure_live/domains/account/presentation/account/bigo/bigo_cookie_page.dart';
 import 'package:pure_live/domains/live/presentation/areas/favorite_areas_page.dart';
 import 'package:pure_live/domains/live/presentation/area_rooms/area_rooms_page.dart';
 import 'package:pure_live/domains/account/presentation/account/soop/soop_cookie_page.dart';
@@ -40,6 +41,7 @@ import 'package:pure_live/domains/account/presentation/account/twitch/twitch_coo
 import 'package:pure_live/domains/account/presentation/account/douyin/douyin_cookie_page.dart';
 import 'package:pure_live/domains/account/presentation/account/kuaishou/kuaishou_cookie_page.dart';
 import 'package:pure_live/domains/recorder/presentation/pages/record_settings/record_settings_page.dart';
+import 'package:pure_live/domains/recorder/presentation/pages/local_player/local_video_player_page.dart';
 import 'package:pure_live/domains/live/presentation/favorite/favorite_controller.dart';
 
 // auth
@@ -82,19 +84,16 @@ class AppPages {
       preventDuplicates: false,
       bindings: [MultiviewBinding()],
     ),
-    //账号设置
     GetPage(
       name: RoutePath.kSettingsAccount,
       page: _smoothPage(() => const AccountPage()),
       bindings: [AccountBinding()],
     ),
-    //哔哩哔哩Web登录
     GetPage(
       name: RoutePath.kBiliBiliWebLogin,
       page: _smoothPage(() => const BiliBiliWebLoginPage()),
       bindings: [BilibiliWebLoginBinding()],
     ),
-    //哔哩哔哩二维码登录
     GetPage(
       name: RoutePath.kBiliBiliQRLogin,
       page: _smoothPage(() => const BiliBiliQRLoginPage()),
@@ -153,6 +152,11 @@ class AppPages {
       bindings: [TwitchCookieBinding()],
     ),
     GetPage(name: RoutePath.kYyCookie, page: _smoothPage(() => const YyCookiePage()), bindings: [YyCookieBinding()]),
+    GetPage(
+      name: RoutePath.kBigoCookie,
+      page: _smoothPage(() => const BigoCookiePage()),
+      bindings: [BigoCookieBinding()],
+    ),
 
     GetPage(name: RoutePath.kSoop, page: _smoothPage(() => const SoopCookiePage()), bindings: [SoopCookieBinding()]),
 
@@ -167,10 +171,8 @@ class AppPages {
     GetPage(
       name: RoutePath.kSplash,
       page: () {
-        // 判断是否为夜间模式
         final bool isDarkMode = Get.isDarkMode;
 
-        // 根据模式选择渐变色
         final LinearGradient bgGradient = isDarkMode
             ? const LinearGradient(
                 colors: [Color(0xFF0D1B2A), Color(0xFF1B263B), Color(0xFF141E27)],
@@ -183,7 +185,6 @@ class AppPages {
                 end: Alignment.bottomRight,
               );
 
-        // 夜间模式下的文字颜色
         final Color textColor = isDarkMode ? Colors.white70 : Colors.black54;
 
         return SplashScreen(
@@ -219,6 +220,11 @@ class AppPages {
       name: RoutePath.kRecordSettings,
       page: _smoothPage(() => const RecordSettingsPage()),
       bindings: [RecordSettingsBinding()],
+    ),
+    GetPage(
+      name: RoutePath.kLocalVideoPlayer,
+      page: _smoothPage(() => const LocalVideoPlayerPage()),
+      bindings: [LocalVideoPlayerBinding()],
     ),
     GetPage(name: RoutePath.kWebSearch, page: _smoothPage(() => const WebSearchPage()), bindings: [WebSearchBinding()]),
 

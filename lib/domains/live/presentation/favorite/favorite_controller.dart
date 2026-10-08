@@ -15,6 +15,8 @@ import 'package:pure_live/domains/live/data/favorite_room_controller.dart';
 
 class FavoriteController extends LocalReactivePageController<LiveRoom>
     with GetTickerProviderStateMixin, WidgetsBindingObserver {
+  Worker? _recorderSwitchWorker;
+
   final TagManagementController tagController = Get.find<TagManagementController>();
   final RefreshConfigController refreshConfigController = Get.find<RefreshConfigController>();
 
@@ -83,7 +85,11 @@ class FavoriteController extends LocalReactivePageController<LiveRoom>
   void onInit() {
     super.onInit();
 
-    tabController = TabController(length: 3, vsync: this, animationDuration: pureLiveTabTransitionDuration);
+    tabController = TabController(
+      length: SettingsService.to.app.enableRecorder.v ? 3 : 2,
+      vsync: this,
+      animationDuration: pureLiveTabTransitionDuration,
+    );
     WidgetsBinding.instance.addObserver(this);
     tagController.migrateLegacyRoomTagKeys(FavoriteRoomController.to.favoriteRooms.v);
 
@@ -127,6 +133,11 @@ class FavoriteController extends LocalReactivePageController<LiveRoom>
     unawaited(refreshPersistedRoomsOnStartup());
 
     tabController.addListener(_handleStatusTabChange);
+    // 录制总开关切换时重建状态 Tab（3 档 ↔ 2 档），保持当前状态分类
+    _recorderSwitchWorker = ever<bool>(SettingsService.to.app.enableRecorder, (_) {
+      if (isClosed) return;
+      _rebuildStatusTabs();
+    });
 
     _setupRefreshStrategy();
     _configSubscription = refreshConfigController.configChanges.listen((config) {
@@ -150,12 +161,37 @@ class FavoriteController extends LocalReactivePageController<LiveRoom>
     applyLocalFilter();
   }
 
+  /// 可见 Tab 顺序 → 状态分类：开录制时 [在线, 录播, 离线]，关时 [在线, 离线]
+  int _statusFromTab(int tabIndex) {
+    if (SettingsService.to.app.enableRecorder.v) return tabIndex;
+    return tabIndex == 0 ? 0 : 2;
+  }
+
+  void _rebuildStatusTabs() {
+    final previousStatus = tabOnlineIndex.value;
+    tabController.removeListener(_handleStatusTabChange);
+    tabController.dispose();
+    final length = SettingsService.to.app.enableRecorder.v ? 3 : 2;
+    final mappedStatus = previousStatus == 1 ? 0 : previousStatus;
+    final initialTab = SettingsService.to.app.enableRecorder.v
+        ? mappedStatus.clamp(0, length - 1)
+        : (mappedStatus == 2 ? 1 : 0);
+    tabController = TabController(
+      length: length,
+      initialIndex: initialTab.clamp(0, length - 1),
+      vsync: this,
+      animationDuration: pureLiveTabTransitionDuration,
+    );
+    tabController.addListener(_handleStatusTabChange);
+    tabOnlineIndex.value = _statusFromTab(tabController.index);
+  }
+
   void _handleStatusTabChange() {
     if (isClosed) return;
     if (tabController.indexIsChanging) return;
     final animationValue = tabController.animation?.value ?? tabController.index.toDouble();
     if ((animationValue - tabController.index).abs() > 0.001) return;
-    selectStatusIndex(tabController.index);
+    selectStatusIndex(_statusFromTab(tabController.index));
   }
 
   void _setupRefreshStrategy() {
@@ -225,6 +261,7 @@ class FavoriteController extends LocalReactivePageController<LiveRoom>
 
   @override
   void onClose() {
+    _recorderSwitchWorker?.dispose();
     _refreshEpoch++;
     WidgetsBinding.instance.removeObserver(this);
     tabController.removeListener(_handleStatusTabChange);
@@ -869,7 +906,6 @@ class FavoriteController extends LocalReactivePageController<LiveRoom>
     }
   }
 
-  /// One entry for the failure summary: `小明（douyin/123456，TimeoutException）`.
   String _refreshFailureLabel(LiveRoom liveroom, String reason) {
     final String platform = liveroom.normalizedPlatformId;
     final String roomId = liveroom.roomId?.trim() ?? '';

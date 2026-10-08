@@ -682,6 +682,109 @@ jdlive 与百度直播的日志里都是 `Set property: http-header-fields=[]`�
 所以无害，只是不对称）。
 
 
+### 站点连不上却报成「读取视频信息失败」：两个代理开关的管辖范围没人说（2026-10-05，已修）
+
+日志（niconico 房间）末尾：
+
+```
+⛔ [HTTP Error] [unknown] [Time:530ms]  Underlying Type: HandshakeException
+⛔ Request Origin: https://live.nicovideo.jp   Response Code: none
+⛔ Request Header Keys: [Referer,User-Agent]
+[PlayerController] Play quality loading failed (NiconicoException)
+```
+
+`Response Code: none` + `HandshakeException` 说的是**握手都没成**，不是房间读不出。而同一份日志里
+`[PlaybackProxy] ... http-proxy: http://127.0.0.1:7897` 说明播放器代理是开着的——可它管不到这条路：
+站点页面与 API 请求走的是 `enableAppProxy`（dio、websock、中继上游取流、图片全都归它，见
+`initialized.dart` 里三处 `configureXxxProxyRouting`），只有 `registered=[mpv]` 那条拉流走 `enableProxy`。
+应用层代理没开时站点请求按 `buildProxyDirective` 直连，nicovideo 直连就被掐。
+
+**缺陷不在网络，在归因**：24 个站点适配器的 failure enum 里 `transport` 就是"平台没答话"这一档（HTTP 状态
+各归 access/missing/rateLimited/service，读不出才算 transport），但消费端把它和"房间信息读不出"混成同一句
+`read_video_failed`。观众据此去找坏掉的适配器，而该动的是一个设置。
+
+- `core/network/site_transport_failure.dart`：`SiteTransportFailure` 接口 + `isUnreachableSiteFailure(error)`，
+  认三种形状——适配器自己声明的、dio 分类过的连接类错误、以及 **dio 没分类的那一种**（它只把
+  `SocketException` 映射成连接错误，TLS 被掐是 `unknown` 里裹着 `HandshakeException`，正是日志的形状）。
+- 24 个站点异常类机械实现该接口（`kind == XFailure.transport`）；`douyu`/`twitch` 这类没有 kind 枚举的
+  适配器不强行套，它们漏出的原始 `DioException` 由第二个形状接住。
+- `PlayerController.streamMetadataFailureKey`：两处 `read_video_failed`（取清晰度、切档）改成按上面判定，
+  新增 `site_unreachable`（应用层代理没开：直连，站点请求不经代理）与 `site_unreachable_via_proxy`
+  （已开：说这条节点到不到得了，不再劝人开代理）。同日并发那笔 showroom 修复给出同一条路的另一种根因——Clash 改写 TLS，它的证书不在 dart 的信任链里，于是 `_via_proxy` 那句把两种可能都写上。
+- 测试 `test/core/network/site_transport_failure_test.dart`（6 项，含一条**扫源码**的守卫：凡 failure enum
+  里有 transport 的异常类都必须声明接口，摘掉 niconico 的 `implements` 会立刻变红）与
+  `test/domains/live/stream_metadata_failure_key_test.dart`（2 项）。全仓 138 项全绿。
+- **这条修改只改提示，不改网络路径**：niconico 能不能进房取决于用户是否打开「应用层代理」。要不要让站点
+  请求在播放器代理开着时跟着走同一条，是产品决定——该设置的说明写着"关闭时软件完全使用 DIRECT 直连，
+  避免系统网络探测导致的启动慢"，回退会违背它，所以先不动。
+
+### chzzk 1080p：改写后的清单能开，子分片却没人回答（2026-10-05，已修在 media_core `1d656cf`）
+
+日志形状：
+
+```
+[PlaybackIngest] manifest livecloud.akamaized.net: children=16 absolute=0 relative=16 … -> loopback rewrite
+[PlaybackIngest] livecloud.akamaized.net -> http://127.0.0.1:57047/<secret>/root.m3u8
+[mpv] ffmpeg/demuxer/v: hls: Opening 'http://127.0.0.1:57047/<secret>/r0.m4s' for reading
+[mpv] ffmpeg/demuxer/v: hls: Opening 'http://127.0.0.1:57047/<secret>/rd.m4v' for reading
+                        ← 到这里再没有任何一字节，也没有一条错误
+[media_core/recovery] candidate failed … opened but never played (position frozen at 0ms for 18s)
+```
+
+第二条候选退回直连上游 URL，`[PlaybackProxy] livecloud.akamaized.net -> {http-proxy: http://127.0.0.1:7897}`
+之后是 `httpproxy: Stream ends prematurely at 0` + `tls: IO error`——代理接受了 CONNECT 却没把隧道打通。
+
+**第一处无效状态在回环中继自己**：`LoopbackIngestRelay` 给清单读了截止时间（`manifestTimeout`），子请求却两处
+`await` 都没兜——响应头没到、或正文到一半停住，中继就一直等着，而 mpv 对"一个字节都没有"没有自己的钟，
+于是判词落在流上（"opened but never played"），真正的失败（这条子请求我们没取完）一条日志都没留下。
+修法是把截止时间补到子请求上：**按字节间隔算，不按总时长**（直播分片可以很大，大不等于卡住），
+默认 10s——刻意落在 sweep 那 18s 验证窗之内，否则判词先到、原因后到。响应还没开始时按 502 回答，
+正文已经开了头的就把这条连接提前结束，那是引擎能动作的信号。测试
+`media_core_ingest/test/loopback_stalled_child_test.dart`（2 项，摘掉任一处 `.timeout` 就会挂到 30s 测试上限）。
+
+**没动的一处，需要用户决定**：这台机器上同一个 host 的两条腿走的是两个开关——清单是探测阶段用
+dio（应用层代理，此处未开=直连）读成功的，中继随后取子分片用的却是 `PlaybackProxyPolicy.currentDirective()`
+（播放器代理 7897），而日志证明这条路对这个 host 是坏的。本仓所有其它中继上游取流
+（`ffmpeg_flv_input_relay`/`flv_splice_relay`/`flv_legacy_hevc_relay`/录制侧 hls input）用的都是
+`resolveUpstreamProxyDirective`＝应用层代理，只有这一个例外。把它对齐过去**这次就能播**，但会反过来伤到
+"只开播放器代理、站点必须经它才可达"的那种配置（清单由 host 表判定、没有探测兜底时就是这么走的），
+所以不在这一轮里单方面改。眼下这台机器的可行动作是：`livecloud.akamaized.net` 直连可达（探测已证明），
+把播放器代理对该 host 留在直连即可播放。
+
+### bigo 整站被要求登录：接口没坏、网络没坏，说的是"请重试"（2026-10-06，已修）
+
+用户报"bigo live 无法获取信息"，并附一句 "bigo API request returned a non-JSON response."。
+先把这句话证伪：把 `tool/probes/bigo_metadata_probe_test.dart`（import 早就指向搬走前的
+`domains/live/data/platforms/...`）修好并扩成**走真房间路径 + 记录每次网络响应 + 连抽 6 间房**，
+两条出口各跑一遍。DIRECT 与 `PROXY 127.0.0.1:7897` 结果一致：
+
+| 这一趟 | 结果 |
+| --- | --- |
+| `ta.bigo.tv/official_website/OInterfaceWeb/vedioList/72` | 200 `application/json`，20 张卡片 |
+| `sec.bigo.sg/v1/webjs/t` 与 `/status` | 200 `application/javascript`，JSONP 前缀对得上，token 拿到了 |
+| `studio/getInternalStudioInfo` | 200 `application/json`，但 **6/6 房间** `needLogin:true`、`alive` 缺省、`hls_src:""`、`roomTopic:""` |
+
+所以既不是"非 JSON"也不是被墙：**上游现在要求登录会话才给匿名接口了**（上游 4.x 在同一条路上抛
+`ApiChanged`，见 `live_core/lib/src/sites/bigo/bigo_api.dart:845`）。本仓没有 bigo 的 cookie 入口
+（`CookieSettingsController` 里就没有 `bigoCookie`），所以能不能播这一半没修，也不该假装修。
+
+修的是**说什么**。两处叠在一起才让观众只看到一句会重试成功的话：
+
+1. `BigoSite._room` 只在 `liveStatus == live` 时保留限制种类。登录墙下 `reportedAlive` 恒为 null
+   （`access != public` 时故意不读 `alive`——"access-gated alive=0 is not a verified offline
+   observation"），状态于是是 unknown，`restrictionOf(loginRequired)` 给出的 `needsLogin` 被丢掉。
+   现在改成"确认在播 **或** 平台声明了受限就保留"，公开房间仍然只有确认在播才谈受限（普通下播
+   不许冒充"需要登录"）。
+2. 状态未知的房间走 `_handleUnknownStatus`，而它以前只说 `get_room_info_failed_retry`，从不看限制。
+   `roomStateMessage` 提为可测的顶层函数，`unknownRoomStatusMessage(room)` 在平台声明了原因时按限制
+   种类说（`restriction_needs_login`＝"该直播需要登录后才能观看。"），没有原因时才是那句重试；
+   `loadError` 同步用它，所以提示消失后界面仍留着原因。
+
+测试：`test/shared/platforms/bigo_login_wall_test.dart`（3 项：登录墙→needsLogin + unknown；公开下播
+→offline 且限制为 null；公开在播有地址→不受限）与 `test/domains/live/unknown_room_status_message_test.dart`
+（3 项）。mutation 各自验过：退回旧的 `liveStatus == live` 条件，第 1 组第一条就红（Actual: null）。
+`_handleUnknownStatus` 里那句替换没有自动化覆盖——它要整套 GetX 房间壳，纯判定部分已单独测到。
+
 ### 还没声明的站点（上游有 format/codec，本仓待补）
 
 **已补（2026-10-04 同批）**：bilibili（直播 `flv`/`ts`/`fmp4` 线路按 `parsePlayUrlResolution` 里的
@@ -1426,3 +1529,32 @@ chatCount=1 connectedAtEnd=true`（20 秒观测，`chatCount=1` 说明 DEFLATE +
 | 播放 | 房间播不了时按限制种类给文案（登录/付费/订阅/私密/仅 App/地区/密码/成人/无可播流）；受限直播在取流阶段的失败也会给出原因，不再只是静默置为失败 | **已完成** |
 | 文案 | `restriction_*` 九个键（zh + en） | **已完成** |
 | 站点 | **tiktok** 已接入（22-1）。其余站点按各自上游行继续接（见各站点小节） | 进行中 |
+
+## 共用播放器层（直播 = 录像，同一套控制）
+
+用户要求录像播放页"和直播表现一样"，追查后确认：`live_play` 的控制层不是通用播放器
+UI，`VideoController`（1466 行，构造要 `LiveRoom` + datasource + 清晰度 + EPG）与
+`VideoControllerPanel`（2098 行，含清晰度/CDN/录制按钮）都绑死直播间，加上
+`domains/X` 不能依赖别的域，直接复用是硬违规。所以把真正与房间无关的部分抽到
+`lib/core/player/presentation/`，两边接同一份。
+
+| 组件 | 位置 | 谁在用 |
+| --- | --- | --- |
+| `PlayerUiController`（接口）+ `PlayerGestureLayer`（左亮度/右音量/滚轮/系统手势带避让） | `core/player/presentation/player_ui_controller.dart` | 直播 `VideoController` 实现该接口；录像 `LocalVideoPlayerController` 实现该接口 |
+| `enterSystemPip` / `exitSystemPip` / `enterPlayerFullscreen` / `exitPlayerFullscreen` | `core/player/presentation/player_presentation_actions.dart` | 直播 `LivePlayerFacade.enablePip`、录像 `enterPip`（窗口尺寸/方向/位置记忆共用） |
+| `PlayerDanmakuSurface` + `DanmakuSettingsSource` / `SettingsDanmakuSource` / `PortraitDanmakuPolicy` | `core/player/presentation/danmaku/` | 直播 `DanmakuViewer`、multiview settings source、录像页 |
+
+删除的重复实现：直播面板里的 `BrightnessVolumnDargArea`（300 行）与 `DanmakuViewer`
+（57 行），录像页自制的进度条/传输行/速度 chip，录像页自制的弹幕渲染（80 行）。
+live 侧旧导入路径（`danmaku_settings_source.dart`、`portrait_danmaku_policy.dart`、
+`multiview_danmaku_settings_source.dart`）保留为转发 export，是搬家不是复制。
+
+顺手修掉的运行时异常：`_PlaylistPanel` 的 `Obx` 只读普通 `List` 导致 GetX
+ObxError + 99625px 溢出（`videoFiles` 改为 `RxList`）；小窗播放中点开录像后窗口
+覆盖层残留（`FloatingHandleKeeper.reclaimCurrent` 先 `exitFloating` 再释放句柄）。
+
+录像弹幕：录制时可选落盘的 `<prefix>.xml`（B 站格式）由
+`recording_danmaku_track.dart` 解析并按播放位置回放，seek 移动游标而不是补发。
+
+批次：`555c0bbd3`。验证：`flutter analyze --no-pub lib test` 干净、`flutter test`
+165 全过、`validate_architecture.py --strict` 0 未批准违规。**未做设备验收。**

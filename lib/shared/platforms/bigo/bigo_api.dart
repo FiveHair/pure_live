@@ -4,11 +4,14 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:pure_live/core/config/cookie_settings_controller.dart';
 import 'package:pure_live/core/models/live_room.dart';
 import 'package:pure_live/core/network/http_client.dart';
 import 'package:pure_live/core/network/request_scope.dart';
 
 import 'bigo_token.dart';
+
+import 'package:pure_live/core/network/site_transport_failure.dart';
 
 enum BigoFailure {
   transport,
@@ -27,9 +30,11 @@ enum BigoFailure {
 
 enum BigoAccess { public, loginRequired, restricted }
 
-class BigoException implements Exception {
+class BigoException implements Exception, SiteTransportFailure {
   const BigoException(this.kind);
   final BigoFailure kind;
+  @override
+  bool get isSiteUnreachable => kind == BigoFailure.transport;
   @override
   String toString() => 'Bigo ${kind.name}';
 }
@@ -83,10 +88,8 @@ class BigoStudioStatus {
   final int roomStatus;
   final String roomType;
 
-  /// `passRoom`：房间密码。
   final bool password;
 
-  /// `isPaidShow` 为 1：付费直播。
   final bool paid;
 }
 
@@ -109,7 +112,6 @@ class BigoStudioRoom {
   final String category;
   final String? avatar;
 
-  /// 直播间截图（下播时是上一场的那张）；封面优先用它，头像兜底（上游 24-1）。
   final String snapshot;
   final Uri? hls;
 }
@@ -135,7 +137,15 @@ class BigoApi {
   static const origin = 'https://ta.bigo.tv/official_website';
   static const securityOrigin = 'https://sec.bigo.sg/v1/webjs';
   static const webOrigin = 'https://www.bigo.tv';
-  static const headers = {'Origin': webOrigin, 'Referer': '$webOrigin/', 'User-Agent': 'Mozilla/5.0'};
+
+  static const headers = {
+    'Origin': webOrigin,
+    'Referer': '$webOrigin/',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/javascript, */*; q=0.01',
+    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    'X-Requested-With': 'XMLHttpRequest',
+  };
   static const responseLimit = 1024 * 1024;
   final BigoRequest _request;
   final BigoTokenDataBuilder _tokenDataBuilder;
@@ -145,12 +155,21 @@ class BigoApi {
   static String _defaultCallback() =>
       'jsonpcallback_${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecondsSinceEpoch % 1000000}';
 
+  static String configuredCookie() {
+    try {
+      return CookieSettingsController.to.bigoCookie.value.trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
   static Future<({int status, String body})> _defaultRequest(
     String method,
     Uri uri,
     Map<String, String>? form,
     CancelToken cancel,
   ) async {
+    final cookie = configuredCookie();
     final response = await HttpClient.instance.dio.request<ResponseBody>(
       uri.toString(),
       data: form,
@@ -159,7 +178,7 @@ class BigoApi {
         method: method,
         responseType: ResponseType.stream,
         followRedirects: false,
-        headers: headers,
+        headers: {if (cookie.isNotEmpty) 'Cookie': cookie, ...headers},
         contentType: form == null ? null : Headers.formUrlEncodedContentType,
         validateStatus: (_) => true,
       ),
@@ -411,7 +430,7 @@ class BigoApi {
     final owner = _ownerId(data['uid']);
     if (owner != expectedOwnerId) throw const BigoException(BigoFailure.identity);
     final login = _boolean(data['needLogin']);
-    final password = _boolean(data['passRoom']);
+    final password = data['passRoom'] is bool ? _boolean(data['passRoom']) : false;
     final paid = _text(data['isPaidShow']);
     if (!{'', '0', '1'}.contains(paid)) throw const BigoException(BigoFailure.schema);
     final alive = _binary(data['alive']);
@@ -433,9 +452,6 @@ class BigoApi {
     );
   }
 
-  /// 这场直播的限制种类（上游 24-2）：要登录的是 [LiveRestriction.needsLogin]；
-  /// 受限的按 `passRoom` 区分密码房与付费房；公开但拿不到播放地址的
-  /// （`hls` 为空）是 [LiveRestriction.unplayable]。受限的直播仍然是"在播"。
   static LiveRestriction restrictionOf(BigoStudioStatus status, {required bool hasMedia}) => switch (status.access) {
     BigoAccess.loginRequired => LiveRestriction.needsLogin,
     BigoAccess.restricted => status.password ? LiveRestriction.password : LiveRestriction.paid,
@@ -458,9 +474,8 @@ class BigoApi {
     final title = data['roomTopic'] == null ? '' : _text(data['roomTopic']);
     final category = data['gameTitle'] == null ? '' : _text(data['gameTitle']);
     final rawAvatar = data['avatar'];
-    final avatar = rawAvatar == null || rawAvatar == '' ? null : _httpsUri(_text(rawAvatar)).toString();
-    // 快照放宽到 http(s)（上游 `_picture`）：读不出来就当作没有，不能因为一张图
-    // 让整次详情解析失败。
+    final avatarPicture = _picture(rawAvatar == null ? '' : _text(rawAvatar));
+    final avatar = avatarPicture.isEmpty ? null : avatarPicture;
     final snapshot = _picture(data['snapshot'] == null ? '' : _text(data['snapshot']));
     final rawHls = data['hls_src'];
     final hls = rawHls == null || rawHls == '' ? null : _httpsUri(_text(rawHls), hls: true);
@@ -478,7 +493,6 @@ class BigoApi {
     );
   }
 
-  /// 宽松的图片地址（快照）：http(s)、有 host、无 userinfo/fragment，否则空串。
   static String _picture(String source) {
     if (source.isEmpty) return '';
     final uri = Uri.tryParse(source);

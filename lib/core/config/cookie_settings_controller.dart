@@ -8,10 +8,6 @@ import 'package:pure_live/core/network/cookie_sanitizer.dart';
 class CookieSettingsController extends GetxController {
   static CookieSettingsController get to => Get.find();
 
-  /// 恢复 Cookie 后的账号联动端口。
-  ///
-  /// 账号域（BiliBiliAccountService）的具体实现由 App 装配层绑定
-  /// （见 InitialServices._bindCorePorts）；Core 的凭据存储因此不认识业务域。
   static void Function()? onRestored;
 
   final RxString bilibiliCookie = hiveString('bilibiliCookie', '');
@@ -40,6 +36,7 @@ class CookieSettingsController extends GetxController {
   final RxString twitchCookie = hiveString('twitchCookie', '');
   final RxString soopCookie = hiveString('soopCookie', '');
   final RxString yyCookie = hiveString('yyCookie', '');
+  final RxString bigoCookie = hiveString('bigoCookie', '');
 
   @override
   void onInit() {
@@ -59,17 +56,13 @@ class CookieSettingsController extends GetxController {
       twitchCookie,
       soopCookie,
       yyCookie,
+      bigoCookie,
     ]) {
       final normalized = normalizeAccountCookie(cookie.v);
       if (normalized != cookie.v) cookie.v = normalized;
     }
   }
 
-  /// 还存不存在任何登录凭据。
-  ///
-  /// 「清除所有账号」按它决定可不可点：没东西可清的时候给一个能点的破坏性按钮，
-  /// 只会让人怀疑自己是不是没登出干净。斗鱼的续期凭据也算——它单独留着就是
-  /// 登出没登出的那种状态。
   bool get hasAnyCredential {
     for (final value in <RxString>[
       bilibiliCookie,
@@ -82,19 +75,13 @@ class CookieSettingsController extends GetxController {
       twitchCookie,
       soopCookie,
       yyCookie,
+      bigoCookie,
     ]) {
       if (value.v.isNotEmpty) return true;
     }
     return false;
   }
 
-  /// 斗鱼这一组是一个会话，不是一个字段。
-  ///
-  /// `douyuLtp0` 是 passport 的长期续期密钥，`douyuDid` 是它绑定的设备号：
-  /// 留着它们，"已登出"就只是把 cookie 抹了——凭据仍在本地，也仍会跟着
-  /// 勾选了敏感数据的备份一起导出。续期本身要读到非空 cookie 才会发请求
-  /// （见 `DouyuUtils.refreshSession`），所以清掉不影响任何在用的能力；
-  /// 重新登录时那一页本来就三个字段一起填。
   void clearDouyuSession() {
     douyuCookie.v = '';
     douyuCookieSavedAt.v = 0;
@@ -110,6 +97,7 @@ class CookieSettingsController extends GetxController {
     twitchCookie.v = '';
     soopCookie.v = '';
     yyCookie.v = '';
+    bigoCookie.v = '';
     bilibiliUid.v = 0;
     clearDouyuSession();
   }
@@ -128,6 +116,7 @@ class CookieSettingsController extends GetxController {
       'twitchCookie': twitchCookie.v,
       'soopCookie': soopCookie.v,
       'yyCookie': yyCookie.v,
+      'bigoCookie': bigoCookie.v,
     };
   }
 
@@ -146,6 +135,7 @@ class CookieSettingsController extends GetxController {
       'twitchCookie': normalizeAccountCookie((json['twitchCookie'] ?? '') as String),
       'soopCookie': normalizeAccountCookie((json['soopCookie'] ?? '') as String),
       'yyCookie': normalizeAccountCookie((json['yyCookie'] ?? '') as String),
+      'bigoCookie': normalizeAccountCookie((json['bigoCookie'] ?? '') as String),
     };
   }
 
@@ -163,6 +153,7 @@ class CookieSettingsController extends GetxController {
     twitchCookie.v = parsed['twitchCookie'];
     soopCookie.v = parsed['soopCookie'];
     yyCookie.v = parsed['yyCookie'];
+    bigoCookie.v = parsed['bigoCookie'];
 
     onRestored?.call();
   }

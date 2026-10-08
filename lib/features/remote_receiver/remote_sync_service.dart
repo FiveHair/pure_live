@@ -6,7 +6,6 @@ import 'package:bonsoir/bonsoir.dart';
 import 'package:pure_live/core/index.dart';
 import 'package:pure_live/core/storage/hive_pref_util.dart';
 import 'package:pure_live/core/platform/platform_utils.dart';
-import 'package:pure_live/core/platform/local_network_access.dart';
 import 'package:pure_live/features/backup/backup_controller.dart';
 import 'package:pure_live/features/remote_receiver/remote_sync_device.dart';
 import 'package:pure_live/features/remote_receiver/remote_sync_protocol.dart';
@@ -144,9 +143,6 @@ class RemoteSyncService extends GetxController {
     _running = true;
 
     try {
-      // Android 17 blocks LAN sockets without the local-network permission.
-      if (!await LocalNetworkAccess.ensure()) return;
-
       await _refreshNetworkInfo();
 
       if (_disposed || localIp.value.isEmpty) {
@@ -747,9 +743,7 @@ class RemoteSyncService extends GetxController {
         if (_isSelfService(service)) {
           return;
         }
-        // TXT 已经包含 IP，先加入设备。
         _addOrUpdateDevice(service);
-        // 后台尝试 resolve，成功后再更新。
         try {
           service.resolve(discovery.serviceResolver);
         } catch (_) {
@@ -812,16 +806,12 @@ class RemoteSyncService extends GetxController {
     final devicePlatform = attributes['platform'] ?? '';
     final deviceVersion = attributes['version'] ?? '';
 
-    // 优先使用 Bonsoir 解析出来的地址，
-    // 解析不到时使用 TXT 中广播的 IP。
     final ip = _selectServiceIp(service) ?? attributes['ip']?.trim();
 
     if (ip == null || !_isValidIpv4(ip)) {
       return;
     }
 
-    // Bonsoir 尚未 resolve 时 port 可能为 0。
-    // PureLive 使用固定端口，因此直接使用协议默认端口。
     final port = service.port > 0 ? service.port : RemoteSyncProtocol.defaultHttpPort;
 
     final device = RemoteSyncDevice(
@@ -989,7 +979,6 @@ class RemoteSyncService extends GetxController {
     try {
       final backup = Get.find<BackupController>();
 
-      // 只把发送端勾选的模块发出去（Cookie / WebDAV 也在模块页里，默认勾选）。
       final payload = backup.exportAllSettings(sections: sections);
 
       final client = HttpClient();

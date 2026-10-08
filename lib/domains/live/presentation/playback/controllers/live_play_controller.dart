@@ -39,6 +39,27 @@ typedef IptvPlayerStarter = Future<bool> Function(LiveRoom liveroom);
 
 enum IptvPlaybackSwitchResult { started, superseded, failed }
 
+@visibleForTesting
+String roomStateMessage(LiveRoom room) {
+  return switch (room.effectiveRestriction) {
+    LiveRestriction.needsLogin => i18n('restriction_needs_login'),
+    LiveRestriction.paid => i18n('restriction_paid'),
+    LiveRestriction.subscribersOnly => i18n('restriction_subscribers_only'),
+    LiveRestriction.private => i18n('restriction_private'),
+    LiveRestriction.appOnly => i18n('restriction_app_only'),
+    LiveRestriction.regionBlocked => i18n('restriction_region_blocked'),
+    LiveRestriction.password => i18n('restriction_password'),
+    LiveRestriction.adult => i18n('restriction_adult'),
+    LiveRestriction.unplayable => i18n('restriction_unplayable'),
+    LiveRestriction.none =>
+      room.effectiveLiveStatus == LiveStatus.banned ? i18n('server_error_retry_later') : i18n('stream_not_live'),
+  };
+}
+
+@visibleForTesting
+String unknownRoomStatusMessage(LiveRoom? room) =>
+    room != null && room.isRestricted ? roomStateMessage(room) : i18n('get_room_info_failed_retry');
+
 class LivePlayController extends GetxController
     with GetSingleTickerProviderStateMixin, WidgetsBindingObserver
     implements DanmakuSessionHost, PlayerSessionHost {
@@ -325,7 +346,7 @@ class LivePlayController extends GetxController
       addBatchSuperChat(sc);
     } catch (e) {
       if (!isClosed && !_ownerClosed && _isRoomLoadCurrent(loadEpoch, liveroom)) {
-        addSystemMessage("SC读取失败");
+        addSystemMessage(i18n('live_sc_read_failed'));
       }
     }
   }
@@ -423,13 +444,6 @@ class LivePlayController extends GetxController
     }
   }
 
-  /// 进入系统画中画：先退出全屏 / 窗口全屏，再请求小窗。
-  ///
-  /// 全屏必须先退出，而且不能指望内核呈现链去做：`WindowService` 直接驱动全屏
-  /// 驱动，链的 `_active` 始终是空的，于是「先释放上一个驱动」那一步不会执行，
-  /// 窗口保持系统全屏——小窗尺寸与画面适配叠在全屏窗口上（画面被裁、全屏控件留在
-  /// 小窗里），退出小窗恢复的也是全屏几何。窗口全屏是应用内布局模式，同样先回到
-  /// 普通模式，否则小窗里渲染的是宽屏布局。
   Future<void> enterPipPresentation() async {
     final player = GlobalPlayerService.instance.player;
     if (player.isSystemFullscreen.value ||
@@ -549,8 +563,6 @@ class LivePlayController extends GetxController
   @override
   void removeRetractedMessages(LiveRetraction target) {
     if (isClosed) return;
-    // 聊天列表与画面弹幕都按目标（观众/单条 id/全部）撤下去；画面侧靠引擎的
-    // `BarrageController.retractWhere`（本仓依赖的 flame_barrage 已支持按条撤回）。
     removeDanmakuWhere(
       (message) => target.matches(userId: message.userId, userName: message.userName, messageId: message.messageId),
     );
@@ -757,9 +769,6 @@ class LivePlayController extends GetxController
       return liveRoom;
     } catch (e) {
       if (!_isRoomLoadCurrent(loadEpoch, requestedRoom)) return LiveRoom();
-      // 这个 catch 兜住的不只是房间信息：取清晰度、绑定自有输入都在这条路上，
-      // 而 toast 只会说"获取直播间信息失败"。不留一行日志，下一次故障就得靠猜
-      // 分辨到底是元数据还是播放阶段坏的。
       developer.log('Room load failed: $e', name: 'LivePlayController');
       updateRoom(isLoading: false, loadError: e.toString());
       ToastUtil.show(i18n('get_room_info_failed_retry'));
@@ -795,10 +804,8 @@ class LivePlayController extends GetxController
         name: 'LivePlayController',
         stackTrace: stackTrace,
       );
-      // 受限的直播在这里才会失败（站点读不到流是正常的），要按限制种类说明原因，
-      // 而不是只把界面置成失败。
       if (liveRoom.isRestricted) {
-        ToastUtil.show(_roomStateMessage(liveRoom));
+        ToastUtil.show(roomStateMessage(liveRoom));
       }
       updateRoom(success: false);
     }
@@ -825,26 +832,8 @@ class LivePlayController extends GetxController
     if (liveRoom.platform != Sites.iptvSite) {
       await _updateFavoriteRoomSnapshot(liveRoom);
     }
-    ToastUtil.show(_roomStateMessage(liveRoom));
+    ToastUtil.show(roomStateMessage(liveRoom));
     _restoreQualityAndLines();
-  }
-
-  /// 房间播不了时的说明：平台标了限制就按限制种类说明原因（"受限=仍在播，
-  /// 只是这个客户端看不到"），否则才说未开播/稍后重试。
-  String _roomStateMessage(LiveRoom room) {
-    return switch (room.effectiveRestriction) {
-      LiveRestriction.needsLogin => i18n('restriction_needs_login'),
-      LiveRestriction.paid => i18n('restriction_paid'),
-      LiveRestriction.subscribersOnly => i18n('restriction_subscribers_only'),
-      LiveRestriction.private => i18n('restriction_private'),
-      LiveRestriction.appOnly => i18n('restriction_app_only'),
-      LiveRestriction.regionBlocked => i18n('restriction_region_blocked'),
-      LiveRestriction.password => i18n('restriction_password'),
-      LiveRestriction.adult => i18n('restriction_adult'),
-      LiveRestriction.unplayable => i18n('restriction_unplayable'),
-      LiveRestriction.none =>
-        room.effectiveLiveStatus == LiveStatus.banned ? i18n('server_error_retry_later') : i18n('stream_not_live'),
-    };
   }
 
   Future<void> _updateFavoriteRoomSnapshot(LiveRoom liveroom) async {
@@ -872,13 +861,14 @@ class LivePlayController extends GetxController
 
   void _handleUnknownStatus() {
     settleUnknownRoomMetadata();
+    final message = unknownRoomStatusMessage(state.value.room.detail);
     if (state.value.player.hasPlaybackSource) {
-      if (Get.currentRoute == '/live_play') ToastUtil.show(i18n('get_room_info_failed_retry'));
+      if (Get.currentRoute == '/live_play') ToastUtil.show(message);
       return;
     }
     unawaited(danmakuController.stopDanmaku());
     if (Get.currentRoute == '/live_play') {
-      ToastUtil.show(i18n('get_room_info_failed_retry'));
+      ToastUtil.show(message);
       setNormalScreen();
       GlobalPlayerService.instance.player.isSystemFullscreen.value = false;
       GlobalPlayerService.instance.player.isWindowFullscreen.value = false;
@@ -892,7 +882,7 @@ class LivePlayController extends GetxController
       isLiving: hasPlaybackSource,
       success: hasPlaybackSource,
       isLoading: false,
-      loadError: i18n('get_room_info_failed_retry'),
+      loadError: unknownRoomStatusMessage(state.value.room.detail),
     );
   }
 
@@ -1121,8 +1111,26 @@ class LivePlayController extends GetxController
     return suppress;
   }
 
+  /// Whether this room hands the video (and therefore the danmaku session) to
+  /// the in-app small window. Mirrors the facade, which owns the floating
+  /// window's lifetime: while it is prepared or showing, the route's pop must
+  /// not tear the danmaku session down.
+  @override
+  bool get keepsDanmakuForFloating =>
+      _floatingHandoffPrepared || GlobalPlayerService.instance.player.shouldKeepDanmakuForAppFloating;
+
+  /// Sticky record of "this room is being handed to the small window".
+  ///
+  /// The facade's answer is the live truth, but it is read while the route is
+  /// being torn down and GetX deletes this room's controllers in the same turn;
+  /// a keep decision that flips to false for one instant stops the danmaku
+  /// session for good. Prepared once, cleared when the window is closed for
+  /// real, so the answer cannot be missed by ordering.
+  bool _floatingHandoffPrepared = false;
+
   void prepareAppFloating({Future<void>? routeUnmounted}) {
     _floatingResourcesReleased = false;
+    _floatingHandoffPrepared = true;
     final manager = GlobalPlayerService.instance.player;
     final current = state.value;
     final detail = current.room.detail;
@@ -1156,6 +1164,7 @@ class LivePlayController extends GetxController
   Future<void> disposeAppFloatingResources() async {
     if (_floatingResourcesReleased) return;
     _floatingResourcesReleased = true;
+    _floatingHandoffPrepared = false;
 
     final videoController = state.value.player.videoController;
     await _disposeAppFloatingResourcesAsync(videoController);

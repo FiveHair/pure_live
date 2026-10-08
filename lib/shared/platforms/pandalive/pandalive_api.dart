@@ -7,6 +7,7 @@ import 'package:pure_live/core/network/http_client.dart';
 import 'package:pure_live/core/network/request_scope.dart';
 
 import 'pandalive_link.dart';
+import 'package:pure_live/core/network/site_transport_failure.dart';
 
 enum PandaLiveFailure {
   transport,
@@ -23,10 +24,12 @@ enum PandaLiveFailure {
   mediaUnavailable,
 }
 
-class PandaLiveException implements Exception {
+class PandaLiveException implements Exception, SiteTransportFailure {
   const PandaLiveException(this.kind);
   final PandaLiveFailure kind;
 
+  @override
+  bool get isSiteUnreachable => kind == PandaLiveFailure.transport;
   @override
   String toString() => 'PandaTV ${kind.name}';
 }
@@ -63,8 +66,6 @@ final class PandaLiveCard {
   final bool isAdult;
   final bool isPassword;
 
-  /// 在播但其实是录播重播（`onAirType`/`liveType` 为 `rec`，标题带 `[녹]`）。
-  /// 它按直播推流、照常可播，但状态是回放（上游 M4.U.25；3.x 显示为直播中）。
   final bool isRerun;
 }
 
@@ -138,12 +139,9 @@ final class PandaLiveRoom {
   final PandaLiveAccess access;
   final List<PandaLiveStream> streams;
 
-  /// `live/play` 给的 Centrifugo 聊天标识与令牌（上游 M5.21）：`channel` 是主播编号
-  /// （不是数字时用主播 userId），令牌约 30 分钟过期；没有就是没有聊天。
   final String chatChannel;
   final String chatToken;
 
-  /// 录播重播（见 [PandaLiveCard.isRerun]）：在播，但状态是回放。
   final bool isRerun;
 }
 
@@ -438,7 +436,6 @@ class PandaLiveApi {
         final manifest = await _read('GET', master, null, referer, token, manifest: true);
         final streams = parseManifest(master, manifest);
         if (streams.isEmpty) throw const PandaLiveException(PandaLiveFailure.mediaUnavailable);
-        // 聊天标识与令牌（上游 M5.21）：`channel` 不是数字时用主播 userId。
         final rawChannel = play['channel']?.toString().trim() ?? '';
         return _liveRoom(
           userId,
@@ -472,7 +469,6 @@ class PandaLiveApi {
     );
   }
 
-  /// 在播的这条是不是录播重播：`onAirType` 或 `liveType` 为 `rec`（上游 M4.U.25）。
   static bool isRerun(Map<String, dynamic> media) =>
       _text(media['onAirType']) == 'rec' || _text(media['liveType']) == 'rec';
 

@@ -120,7 +120,7 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
       }
       List<String> value = List<String>.from(v as List);
       final bool isTablet = Get.width > 680;
-      if (isTablet) {
+      if (isTablet || !SettingsService.to.app.enableRecorder.v) {
         value = value.where((id) => id != HomeMenu.record.id).toList();
       }
       if (value.isEmpty) {
@@ -179,7 +179,7 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
   void _syncInitialIndex() {
     List<String> activeIds = SettingsService.to.app.savedMenuIds.v;
     final bool isTablet = Get.width > 680;
-    if (isTablet) {
+    if (isTablet || !SettingsService.to.app.enableRecorder.v) {
       activeIds = activeIds.where((id) => id != HomeMenu.record.id).toList();
     }
     if (activeIds.isNotEmpty) {
@@ -251,7 +251,7 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
           return Obx(() {
             final activeMenuIds = List<String>.from(SettingsService.to.app.savedMenuIds.v);
             List<String> tabletActiveMenuIds = List.from(activeMenuIds);
-            if (isTablet) {
+            if (isTablet || !SettingsService.to.app.enableRecorder.v) {
               tabletActiveMenuIds.remove(HomeMenu.record.id);
             }
 

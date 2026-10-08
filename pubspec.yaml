@@ -1,7 +1,7 @@
-name: pure_live
+﻿name: pure_live
 description: 纯粹直播,一款开源的第三方多平台直播聚合播放器.
 publish_to: none
-version: 3.1.17+4106
+version: 3.1.18+4107
 
 environment:
   sdk: ^3.13.0
@@ -60,8 +60,7 @@ dependencies:
   # 本地引擎仓库（与下面 F:/media_core 同款绝对路径依赖）：本仓用到了它 0.0.8 上
   # 新增的宿主撤回接口 `BarrageController.retractWhere`（弹幕撤回要按条撤下已上屏
   # 的消息），pub.dev 上的 0.0.8 还没有这个接口。
-  flame_barrage:
-    path: D:/DEV/flame_barrage
+  flame_barrage: ^0.0.9
 
   # Keep this exact: 0.6.2 preserves argv through FFmpeg/FFprobe/FFplay.
   # Platform URL overrides below select our verified FFmpeg 9.0.2 bundles;
@@ -115,36 +114,98 @@ dependencies:
   # 全部经 media_core 适配包再导出获取, 这里只保留 wakelock_plus
   # (media_core 未覆盖的独立工具包)。
   wakelock_plus: ^1.3.3 # 与 media_core_media_kit 的引擎依赖链对齐
+  #
+  # media_core 从本地绝对路径 (F:/media_core/...) 改成 git 依赖, 统一指向
+  # https://github.com/liuchuancong/media_core 的同一个提交 5b04714。换机器、CI 和
+  # 别人 clone 之后都不再依赖本机目录布局。
+  #
+  # 17 个子包共用同一个 url/ref, 只有子目录不同。各写一份 url/ref 迟早会漂移
+  # 成"两个仓库版本混用", 所以这里宁可重复也保持一致。
   media_core:
-    path: D:/DEV/media_core/packages/media_core
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core
   media_core_media_kit:
-    path: D:/DEV/media_core/packages/media_core_media_kit
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_media_kit
   media_core_ui:
-    path: D:/DEV/media_core/packages/media_core_ui
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_ui
   media_core_pip:
-    path: D:/DEV/media_core/packages/media_core_pip
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_pip
   media_core_fullscreen:
-    path: D:/DEV/media_core/packages/media_core_fullscreen
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_fullscreen
   media_core_multiview:
-    path: D:/DEV/media_core/packages/media_core_multiview
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_multiview
   media_core_ingest:
-    path: D:/DEV/media_core/packages/media_core_ingest
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_ingest
   media_core_presentation:
-    path: D:/DEV/media_core/packages/media_core_presentation
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_presentation
   media_core_floating:
-    path: D:/DEV/media_core/packages/media_core_floating
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_floating
+  media_core_list_playback:
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_list_playback
+  media_core_feed:
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_feed
   media_core_ijk_player:
-    path: D:/DEV/media_core/packages/media_core_ijk_player
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_ijk_player
   media_core_better_player:
-    path: D:/DEV/media_core/packages/media_core_better_player
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_better_player
   media_core_danmaku:
-    path: D:/DEV/media_core/packages/media_core_danmaku
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_danmaku
   media_core_mediasession:
-    path: D:/DEV/media_core/packages/media_core_mediasession
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_mediasession
   media_core_live:
-    path: D:/DEV/media_core/packages/media_core_live
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_live
   media_core_logging:
-    path: D:/DEV/media_core/packages/media_core_logging
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      path: packages/media_core_logging
 
   # -------------------------- 数据存储/数据库 --------------------------
   hive_ce: ^2.20.0 # Hive本地数据库
@@ -207,9 +268,46 @@ dependencies:
 
 # 依赖覆盖（强制指定版本）
 dependency_overrides:
-  # 鸿蒙移植：本地 flame_barrage（pub 0.0.8 缺宿主撤回接口）
-  flame_barrage:
-    path: D:/DEV/flame_barrage
+  # 鸿蒙移植：media_core 本地副本（PlatformUtils ohos 补丁版，跟随上游
+  # 锁定的同一 commit 5b047145）。dependencies 段上游已改 git 依赖，
+  # 本地与 CI（sed 重写路径后应用 tool/patches/media_core_ohos.patch）
+  # 均以此 override 为准。
+  media_core:
+    path: D:/DEV/media_core/packages/media_core
+  media_core_better_player:
+    path: D:/DEV/media_core/packages/media_core_better_player
+  media_core_danmaku:
+    path: D:/DEV/media_core/packages/media_core_danmaku
+  media_core_feed:
+    path: D:/DEV/media_core/packages/media_core_feed
+  media_core_floating:
+    path: D:/DEV/media_core/packages/media_core_floating
+  media_core_fullscreen:
+    path: D:/DEV/media_core/packages/media_core_fullscreen
+  media_core_ijk_player:
+    path: D:/DEV/media_core/packages/media_core_ijk_player
+  media_core_ingest:
+    path: D:/DEV/media_core/packages/media_core_ingest
+  media_core_list_playback:
+    path: D:/DEV/media_core/packages/media_core_list_playback
+  media_core_live:
+    path: D:/DEV/media_core/packages/media_core_live
+  media_core_logging:
+    path: D:/DEV/media_core/packages/media_core_logging
+  media_core_media_kit:
+    path: D:/DEV/media_core/packages/media_core_media_kit
+  media_core_mediasession:
+    path: D:/DEV/media_core/packages/media_core_mediasession
+  media_core_memory:
+    path: D:/DEV/media_core/packages/media_core_memory
+  media_core_multiview:
+    path: D:/DEV/media_core/packages/media_core_multiview
+  media_core_pip:
+    path: D:/DEV/media_core/packages/media_core_pip
+  media_core_presentation:
+    path: D:/DEV/media_core/packages/media_core_presentation
+  media_core_ui:
+    path: D:/DEV/media_core/packages/media_core_ui
   # 鸿蒙移植：Predidit media-kit 本地副本（ohos sysroot 补丁版，
   # 基于 media_core 锁定的同一 commit 803c4a2）
   media_kit:

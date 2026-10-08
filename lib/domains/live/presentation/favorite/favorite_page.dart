@@ -39,11 +39,16 @@ class FavoritePage extends GetView<FavoriteController> {
                     ? const EdgeInsets.symmetric(horizontal: 8)
                     : const EdgeInsets.symmetric(horizontal: 16),
                 physics: const PureLiveBoundedScrollPhysics(),
-                tabs: [
-                  Tab(text: i18n("online_room_title")),
-                  Tab(text: i18n("recording_room_title")),
-                  Tab(text: i18n("offline_room_title")),
-                ],
+                tabs: SettingsService.to.app.enableRecorder.v
+                    ? [
+                        Tab(text: i18n("online_room_title")),
+                        Tab(text: i18n("recording_room_title")),
+                        Tab(text: i18n("offline_room_title")),
+                      ]
+                    : [
+                        Tab(text: i18n("online_room_title")),
+                        Tab(text: i18n("offline_room_title")),
+                      ],
               ),
             ),
             body: _FavoriteSiteTabs(key: siteKey, controller: controller, availableSitesList: availableSitesList),
@@ -211,7 +216,6 @@ class FavoriteTagStrip extends StatelessWidget {
     return Obx(() {
       // Read both reactive values before entering ListView.builder. Its lazy
       // itemBuilder runs outside GetX's dependency collector, which previously
-      // left the visual chip on “全部” while the data filter had already moved
       // to a custom tag.
       final visibleTags = tags.toList(growable: false);
       final activeTagId = selectedTagId.value;

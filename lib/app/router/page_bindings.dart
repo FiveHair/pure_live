@@ -1,7 +1,3 @@
-/// GetX 路由依赖装配：每个页面进栈前要 lazyPut 的控制器。
-///
-/// 这些类原先各自占一个 `<页面>_binding.dart`（24 个 7~9 行的小文件），但它们既不是页面
-/// 也不是控制器，只是路由的装配清单，所以收在 app/router 里合成一个文件。
 library;
 
 import 'package:pure_live/core/index.dart' hide SearchController;
@@ -16,6 +12,7 @@ import 'package:pure_live/domains/account/presentation/account/kuaishou/kuaishou
 import 'package:pure_live/domains/account/presentation/account/soop/soop_cookie_controller.dart';
 import 'package:pure_live/domains/account/presentation/account/twitch/twitch_cookie_controller.dart';
 import 'package:pure_live/domains/account/presentation/account/yy/yy_cookie_controller.dart';
+import 'package:pure_live/domains/account/presentation/account/bigo/bigo_cookie_controller.dart';
 import 'package:pure_live/domains/live/presentation/area_rooms/area_rooms_controller.dart';
 import 'package:pure_live/domains/live/presentation/areas/favorite_areas_controller.dart';
 import 'package:pure_live/domains/live/presentation/hot_areas/hot_areas_controller.dart';
@@ -27,6 +24,7 @@ import 'package:pure_live/domains/live/presentation/shield/danmu_shield_controll
 import 'package:pure_live/domains/live/presentation/tags/tag_management_controller.dart';
 import 'package:pure_live/domains/recorder/data/record_settings_controller.dart';
 import 'package:pure_live/domains/recorder/presentation/pages/recorder/recorder_controller.dart';
+import 'package:pure_live/domains/recorder/presentation/pages/local_player/local_video_player_controller.dart';
 import 'package:pure_live/features/remote_receiver/remote_sync_service.dart';
 import 'package:pure_live/features/toolbox/toolbox_controller.dart';
 import 'package:pure_live/features/version/version_controller.dart';
@@ -87,6 +85,13 @@ class YyCookieBinding extends Binding {
   }
 }
 
+class BigoCookieBinding extends Binding {
+  @override
+  List<Bind> dependencies() {
+    return [Bind.lazyPut(() => BigoCookieBindingCookieController())];
+  }
+}
+
 class AreaRoomsBinding extends Binding {
   @override
   List<Bind> dependencies() {
@@ -141,10 +146,6 @@ class HotAreasBinding extends Binding {
   }
 }
 
-/// 多画面同看页绑定。
-///
-/// 生产依赖（每格播放器工厂、站点解析器、全局播放暂停钩子）由
-/// [MultiviewController] 构造函数默认装配；测试直接构造控制器并注入假实现。
 class MultiviewBinding extends Binding {
   @override
   List<Bind> dependencies() {
@@ -198,6 +199,22 @@ class RecorderBinding extends Binding {
   @override
   List<Bind> dependencies() {
     return [Bind.lazyPut(() => RecorderController())];
+  }
+}
+
+class LocalVideoPlayerBinding extends Binding {
+  @override
+  List<Bind> dependencies() {
+    return [
+      Bind.lazyPut(() {
+        final args = Get.arguments as Map<String, dynamic>? ?? const {};
+        return LocalVideoPlayerController(
+          directory: args['dir'] as String? ?? '',
+          roomTitle: args['title'] as String?,
+          roomNick: args['nick'] as String?,
+        );
+      }),
+    ];
   }
 }
 

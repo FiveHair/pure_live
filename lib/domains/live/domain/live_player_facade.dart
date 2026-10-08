@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:pure_live/get/get.dart';
 import 'package:media_core/media_core.dart';
 import 'package:media_core_live/media_core_live.dart';
+import 'package:flame_barrage/flame_barrage.dart';
+import 'package:pure_live/core/models/live_message.dart';
 import 'package:pure_live/core/models/live_room.dart';
 import 'package:pure_live/core/player/models/player_engine.dart';
 import 'package:pure_live/core/stream/hls_source_query_policy.dart';
@@ -19,13 +21,16 @@ import 'package:pure_live/core/player/kernel/floating_playback.dart';
 import 'package:pure_live/core/player/presentation/windows_pip_driver.dart';
 import 'package:pure_live/core/player/core/portrait_stream_support.dart';
 import 'package:pure_live/core/player/kernel/player_kernel_service.dart';
+import 'package:pure_live/core/player/kernel/open_volume.dart';
 import 'package:pure_live/core/player/presentation/fullscreen_window.dart' show fullscreenDriver;
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:pure_live/domains/live/presentation/playback/widgets/danmaku/compact_danmaku_overlay.dart';
+// media_kit exports its own `VideoController`, so the room's controller needs a
+// prefix to be named at all here.
+import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/video_controller.dart'
+    as room_surface;
 import 'package:media_core_better_player/media_core_better_player.dart' show kBetterPlayerBackendId;
 import 'package:media_core_ijk_player/media_core_ijk_player.dart' show kIjkPlayerBackendId;
-
-///
 
 final class LivePlayerFacade {
   LivePlayerFacade({PlayerEngine defaultEngine = PlayerEngine.mediaKit, PlaybackSourceInterceptor? sourceInterceptor})
@@ -51,15 +56,8 @@ final class LivePlayerFacade {
     isSystemFullscreen.value = fullscreenDriver.isSystemFullscreen;
   }
 
-  /// 取流接线（FFmpeg 转封装 / manifest 重写）。app 启动时装配，null 时直连播放。
   PlaybackSourceInterceptor? _sourceInterceptor;
 
-  /// 向平台重新取播放地址的入口。null 表示这个平台不签地址（站点没实现
-  /// `LivePlayRecoveryResolver`），恢复只能重开手上那条。
-  ///
-  /// 签名地址按平台的钟过期，不按播放器的钟：卡顿恢复若只重开旧地址，就是把
-  /// 服务端已经拒掉的东西再问一遍，整个 sweep 会烧在一个过期签名上，最后报成
-  /// "没有可播的流"。
   PlaybackSourceResolver? _sourceResolver;
 
   static PlayerKernel get kernel => PlayerKernelService.instance.kernel;
@@ -81,17 +79,11 @@ final class LivePlayerFacade {
 
   FacadeStreamCommit? commit;
   Map<String, String> _lastHeaders = const {};
+
+  /// Kernel preference order: the line swept first, the rest behind it.
   List<String> _lastLines = const [];
   LiveRoom? _room;
 
-  /// 源提交代次，每次发布递增。
-  ///
-  /// 两个消费者（`PlayerController.applySourceCommit` 与 `VideoController`
-  /// 的 `_handleSourceCommit`）都用 `commit.revision <= 已应用代次` 丢弃过期提交。
-  /// 这个代次必须由这里发：默认值恒为 0 时，守卫 `0 <= 0` 会**整批丢掉**每一次提交，
-  /// 房间首次加载看不出来（它走显式的 `updatePlayer`），但切换清晰度/线路时
-  /// `_applyOpenReceipt` 会把提交当成过期回执而抛 `_StreamSelectionCancelled`——
-  /// 切换过程照跑、状态永不回写、界面停在旧选项。
   int _commitRevision = 0;
 
   LiveRoom? get room => _room;
@@ -122,7 +114,6 @@ final class LivePlayerFacade {
     _stateSub = _controller.onStateChanged.listen((state) {
       _stateSubject.add(state);
       _onStateChanged(state);
-      // 轮播房的起播位置（上游 M7.1）：时长一就绪就 seek 一次。
       _tryApplyPendingSeek();
       final playing = state.playback == PlayerPlaybackState.playing;
       if (playing != _lastPlaying) {
@@ -155,12 +146,7 @@ final class LivePlayerFacade {
     Object? sourceSelection,
   }) async {
     if (_disposed) return;
-    // 先收下刷新入口再起播：起播路径上有 await，而恢复任务可能在任意一次 await
-    // 期间问过来，那时它必须拿到这一次播放的 resolver，不能是上一间房的。
     _sourceResolver = sourceResolver;
-    // 起播时就是纯音频的只有一条路：助眠会话自动进入（手动切换发生在起播之后，
-    // 而重进已保留的会话走 _resumeCurrentRoomSession，不会回到这里）。那条路要
-    // 真省电，所以关掉视频轨。
     if (audioOnly) await setAudioOnlyMode(true, stopVideoDecoding: true);
     final sourceUrl = url.trim();
     if (sourceUrl.isEmpty) throw ArgumentError('Remote playback source is empty');
@@ -177,10 +163,25 @@ final class LivePlayerFacade {
     final committed = sourceSelection is PlaybackSourceQualitySelection ? sourceSelection : null;
     final streamFacts = committed?.streamFacts ?? const <String, LiveStreamFacts>{};
 
+    // Declared before the open so libmpv starts at the room's level; a
+    // post-open setVolume let one 100% frame of audio through first.
+    OpenVolume.pending = liveroom?.getSavedVolume().clamp(0.0, 1.0);
     await _controller.play(
       LiveSourceRequest(
         sources: await _intercept(
-          livePlanSources(urls, headers: headers, streamFacts: streamFacts),
+          livePlanSources(
+            urls,
+            headers: headers,
+            streamFacts: streamFacts,
+            // The rotation-room start is seeked to once, on first open only, so
+            // these lines must stay force-seekable; ordinary live lines get no
+            // stamp and drop force-seekable (see MediaKitLiveProperties).
+            startAt: committed?.startAt ?? Duration.zero,
+            // What the status-bar notification and the lock screen show: the
+            // room the viewer opened, not the stream URL's file name.
+            title: liveroom == null ? null : liveSourceTitle(liveroom),
+            artUri: liveroom == null ? null : liveSourceArtUri(liveroom),
+          ),
           streamFacts: streamFacts,
           sourceQueryPolicies: committed?.sourceQueryPolicies ?? const {},
         ),
@@ -193,7 +194,6 @@ final class LivePlayerFacade {
     // `_lastLines` above is the kernel's fallback preference (selected first)
     // and must not leak into it, or every commit would report line 1.
     _declaredAspectRatio = committed?.declaredAspectRatio;
-    // 轮播房的起播位置：本条源重新武装，等时长就绪后 seek 一次。
     _pendingSeekAt = committed?.startAt;
     _publishCommit(
       sourceUrl,
@@ -216,11 +216,11 @@ final class LivePlayerFacade {
   }) async {
     if (_disposed) return;
     _sourceResolver = sourceResolver;
-    // 助眠会话自动进入的那条路（和 play 同理）：真要省电就得关掉视频轨。
     if (audioOnly) await setAudioOnlyMode(true, stopVideoDecoding: true);
     _room = liveroom;
     _lastHeaders = const {};
     _lastLines = const [];
+    OpenVolume.pending = liveroom.getSavedVolume().clamp(0.0, 1.0);
     await _controller.play(
       LiveSourceRequest(sources: await _intercept([ownedPlanSource(source, liveroom)])),
       preferredBackend: backendIdOfEngine(preferredEngine),
@@ -231,7 +231,6 @@ final class LivePlayerFacade {
       const [],
       committed?.qualities ?? qualities,
       committed?.currentQuality ?? currentQuality,
-      // 自有输入没有可复用的 URL，悬浮窗/重进房间只能靠这个 source 重建输入。
       source: source,
     );
     await setVolume(liveroom.getSavedVolume().clamp(0.0, 1.0));
@@ -264,10 +263,6 @@ final class LivePlayerFacade {
     _commitSubject.add(commit);
   }
 
-  /// 自有输入的起播入口。
-  ///
-  /// [sourceRefreshAt] 只是随请求带过来：租约到期前主动换地址（上游的预取腿）
-  /// 还没接，过期后由恢复路径重新向平台取地址。
   Future<void> playSource(
     OwnedPlaybackSource source, {
     LiveRoom? liveroom,
@@ -305,7 +300,13 @@ final class LivePlayerFacade {
       await _controller.play(
         LiveSourceRequest(
           sources: await _intercept(
-            livePlanSources(lines, headers: current.headers, streamFacts: current.streamFacts),
+            livePlanSources(
+              lines,
+              headers: current.headers,
+              streamFacts: current.streamFacts,
+              title: _room == null ? null : liveSourceTitle(_room!),
+              artUri: _room == null ? null : liveSourceArtUri(_room!),
+            ),
             streamFacts: current.streamFacts,
             sourceQueryPolicies: current.sourceQueryPolicies,
           ),
@@ -324,8 +325,6 @@ final class LivePlayerFacade {
   final RxBool _audioOnlyMode = false.obs;
   final RxBool isVerticalVideo = false.obs;
 
-  /// 当前解码出来的画面是一路占位视频（例如猫耳 FM 的 16×16 h264），不是真画面。
-  /// 展示层据此改显房间封面，见 [isDummyVideoSize]。
   final RxBool isDummyVideo = false.obs;
   final _loadingSubject = StreamController<bool>.broadcast();
   bool _lastLoading = false;
@@ -338,9 +337,6 @@ final class LivePlayerFacade {
   FacadeStreamCommit? get currentSourceCommit => commit;
   bool isSourceCommitCurrent(FacadeStreamCommit value) => identical(value, commit);
 
-  /// 进出纯音频模式。默认只改标记（画面由 [getVideoWidgetCompat] 盖住，视频继续
-  /// 解码），`stopVideoDecoding: true` 才真的关视频轨——那是助眠会话省电的路。
-  /// 退出时无论进来时走的哪条路都会恢复视频轨，见 [audioOnlyStopsVideoDecoding]。
   Future<void> setAudioOnlyMode(bool audioOnly, {bool stopVideoDecoding = false}) async {
     _audioOnlyMode.value = audioOnly;
     if (audioOnlyStopsVideoDecoding(entering: audioOnly, stopVideoDecoding: stopVideoDecoding)) {
@@ -418,7 +414,9 @@ final class LivePlayerFacade {
     final size = handle?.combinedSnapshot.geometry.videoSize;
     final next = size != null && size.height > size.width;
     if (next != isVerticalVideo.value) isVerticalVideo.value = next;
-    final dummy = size != null && isDummyVideoSize(width: size.width, height: size.height);
+    final dummy =
+        (size != null && isDummyVideoSize(width: size.width, height: size.height)) ||
+        isAudioOnlyPlatform(_room?.platform);
     if (dummy != isDummyVideo.value) isDummyVideo.value = dummy;
     // The compact window is shaped from the aspect it was fed when PiP began.
     // A live stream often reports its real size only after the first frame, and
@@ -438,28 +436,12 @@ final class LivePlayerFacade {
   }) async {
     final interceptor = _sourceInterceptor;
     if (interceptor == null) return sources;
-    // 接线自己保证不会抛：起不了中继就原样返回直连源。
     final intercepted = await interceptor.intercept(
       PlaybackSourceInterception(sources: sources, streamFacts: streamFacts, sourceQueryPolicies: sourceQueryPolicies),
     );
     return intercepted.isEmpty ? sources : intercepted;
   }
 
-  /// 恢复期的取地址刷新：把内核手上那批刚死掉的源换成平台新给的一批。
-  ///
-  /// 内核传进来的 [current] 只用来满足端口签名：问平台要新地址需要的是房间、
-  /// 清晰度和线路，那些在提交里；而 [current] 里的 URI 在接过中继之后已经是
-  /// 回环地址，不是平台那条了。
-  ///
-  /// 返回空表就是"没有更新的可给"——平台不签地址、答复已过期、或者接线换不出
-  /// 源；这几种情况内核都照旧重开原来的源。resolver 自己抛出去反而更好：内核
-  /// 那一侧会带上恢复分类记一条警告，落进应用的日志环里。恢复不能因为刷新失败
-  /// 而失败，卡顿本身才是那次任务要处理的事。
-  ///
-  /// 换源成功必须重新发布提交：提交是内核之外唯一能读到的播放描述，线路选择器
-  /// 数的是它的 `urls`，换引擎、悬浮窗和重进房间都靠 `currentUrl`/`headers`/
-  /// `ownedSource` 重建源。只换地址不改提交，这几处就会继续指着平台已经拒掉的
-  /// 签名地址。
   Future<List<PlayerSource>> _refreshSources(List<PlayerSource> current) async {
     final resolver = _sourceResolver;
     final committed = commit;
@@ -468,8 +450,6 @@ final class LivePlayerFacade {
 
     final fenceRevision = _commitRevision;
     final result = await resolver(sourceRefreshRequestFor(committed));
-    // 刷新是一次网络往返，期间用户可能已经换房、换档或退出——那些命令都会发布
-    // 自己的提交，代次一动就说明这份答复描述的不是当前这次播放了。
     if (!canAdoptSourceRefresh(
       disposed: _disposed,
       sameRoom: identical(_room, room),
@@ -483,8 +463,6 @@ final class LivePlayerFacade {
       result,
       committed: committed,
       room: room,
-      // 和首次起播走同一条接线：刷新过的源要是绕开中继，需要中继的那些流正好
-      // 就在恢复的路上被降级成直连。
       intercept: (sources) => _intercept(
         sources,
         streamFacts: result.selection?.streamFacts ?? const {},
@@ -528,11 +506,101 @@ final class LivePlayerFacade {
 
   bool get isAppFloatingActive => floating.isAppFloatingActive;
   bool get shouldKeepDanmakuForAppFloating => floating.isAppFloatingActive;
+
+  /// The small window's danmaku pool.
+  ///
+  /// The facade owns it, not the room's controller: the window outlives the
+  /// room's route, and a pool that died with the page is exactly why the window
+  /// used to show a picture with no danmaku.
+  final BarrageController floatingDanmaku = BarrageController();
+
+  /// Lines sent while no renderer was attached, in arrival order.
+  ///
+  /// `BarrageController.send` drops a message when no engine is attached (the
+  /// widget attaches it on mount), and the small window's surface mounts after
+  /// the first lines already arrived. Holding them here and flushing once the
+  /// engine exists is the difference between "the window shows danmaku from the
+  /// first message" and "the window is empty until it is reopened".
+  final List<BarrageItem> _floatingDanmakuBacklog = <BarrageItem>[];
+  Timer? _floatingDanmakuFlushTimer;
+
+  /// Feeds the small window's own pool.
+  ///
+  /// Called for every chat line the session delivers, so the window's danmaku
+  /// never depends on the room's controller still being alive: the pool and the
+  /// feed are both the facade's. The room's full-size surface and PiP keep their
+  /// own pools, so a line is never drawn twice.
+  void sendFloatingDanmaku(LiveMessage msg) {
+    if (!floating.isAppFloatingActive) return;
+    if (msg.message.trim().isEmpty) return;
+    final placement = msg.isLocal ? msg.style?.placement : null;
+    final item = BarrageItem(
+      content: msg.message,
+      type: switch (placement) {
+        LiveMessagePlacement.top => BarrageType.topFixed,
+        LiveMessagePlacement.bottom => BarrageType.bottomFixed,
+        _ => BarrageType.scroll,
+      },
+      userId: msg.userId,
+      userName: msg.userName,
+      id: msg.messageId,
+      textColor: Color.fromARGB(255, msg.color.r, msg.color.g, msg.color.b),
+      fixedDuration: placement == null ? null : const Duration(seconds: 4),
+    );
+    if (floatingDanmaku.engine == null) {
+      if (_floatingDanmakuBacklog.length >= 200) _floatingDanmakuBacklog.removeAt(0);
+      _floatingDanmakuBacklog.add(item);
+      _floatingDanmakuFlushTimer ??= Timer.periodic(const Duration(milliseconds: 200), (_) => _flushFloatingDanmaku());
+      return;
+    }
+    floatingDanmaku.send(item);
+  }
+
+  void _flushFloatingDanmaku() {
+    if (floatingDanmaku.engine == null) {
+      if (!floating.isAppFloatingActive) {
+        _floatingDanmakuBacklog.clear();
+        _floatingDanmakuFlushTimer?.cancel();
+        _floatingDanmakuFlushTimer = null;
+      }
+      return;
+    }
+    for (final item in _floatingDanmakuBacklog) {
+      floatingDanmaku.send(item);
+    }
+    _floatingDanmakuBacklog.clear();
+    _floatingDanmakuFlushTimer?.cancel();
+    _floatingDanmakuFlushTimer = null;
+  }
+
+  void clearFloatingDanmaku() {
+    _floatingDanmakuBacklog.clear();
+    _floatingDanmakuFlushTimer?.cancel();
+    _floatingDanmakuFlushTimer = null;
+    floatingDanmaku.clear();
+  }
+
   void prepareAppFloating({Future<void> Function()? onClose, FacadeStreamCommit? session}) =>
-      // onClose 必须转交：悬浮窗被用户关闭时要停弹幕并释放房间侧资源。
       floating.prepare(onClose: onClose);
+
+  /// The danmaku surface of the in-app small window.
+  ///
+  /// The pool is the facade's, so the surface keeps rendering whether or not the
+  /// room's controller is still alive; the controller is only consulted for the
+  /// room's own style.
+  Widget buildFloatingDanmaku(BuildContext context) {
+    final controller = activeVideoController;
+    return CompactDanmakuOverlay(
+      controller: controller is room_surface.VideoController ? controller : null,
+      barrage: floatingDanmaku,
+      // The window is sized and placed by the viewer; a portrait stream must not
+      // blank it just because the room's own portrait rule hides danmaku there.
+      respectPortraitPolicy: false,
+    );
+  }
+
   Future<void> showAppFloating({Widget Function(BuildContext)? danmakuBuilder}) =>
-      floating.showAppFloating(danmakuBuilder: danmakuBuilder);
+      floating.showAppFloating(danmakuBuilder: danmakuBuilder ?? buildFloatingDanmaku);
   Future<void> closeAppFloating() => floating.closeAppFloating();
   void prepareRoomSessionReentry([LiveRoom? liveroom]) => floating.prepare();
   FacadeStreamCommit? consumeRoomSessionReentry([LiveRoom? liveroom]) {
@@ -580,10 +648,6 @@ final class LivePlayerFacade {
     }
   }
 
-  /// 紧凑小窗（画中画）的那棵树。
-  ///
-  /// [pictureCover] 由调用方决定：这里是 domain，不认识展示层的盖子长什么样，
-  /// 而 PiP 是另一棵子树，不会自动继承房间视图的那一层。
   Widget buildPiPOverlay({Widget? pictureCover}) => _PipOverlayView(
     facade: this,
     pictureCover: pictureCover,
@@ -593,21 +657,20 @@ final class LivePlayerFacade {
   double get currentPresentationAspectRatio {
     final size = handle?.combinedSnapshot.geometry.videoSize;
     if (size == null || size.width <= 0 || size.height <= 0) {
-      // 解码器还没报尺寸：用平台声明的宽高比排版（上游 F.1b），没有才退回 16:9。
-      return _declaredAspectRatio ?? 16 / 9;
+      // 尺寸快照还没到时不能一律按 16:9 报：竖屏流会拿到一个横屏 PiP 窗口，
+      // contain 缩放后四周全是黑边。声明的比例优先，都没有时按已观察到的
+      // 方向（isVerticalVideo 由帧尺寸事件驱动）兜底。
+      if (_declaredAspectRatio != null) return _declaredAspectRatio!;
+      return isVerticalVideo.value ? 9 / 16 : 16 / 9;
     }
     return size.width / size.height;
   }
 
-  /// 平台为当前档声明的画面宽高比（上游 F.1b）；没声明时为 null。
   double? _declaredAspectRatio;
 
-  /// 待应用的起播位置（上游 M7.1：B 站轮播房的 `play_time`）。只对"点播稿件"式的源
-  /// 有效；**每条源只 seek 一次**，换档/重连/中继重开都不会重放。
+  /// Applied once per source, so a reconnect does not seek back to the declared start.
   Duration? _pendingSeekAt;
 
-  /// 时长就绪后把待应用的起播位置落下去。时长还没报（或比起点还短）就先等着——
-  /// 有的解码器会忽略过早的 seek。
   void _tryApplyPendingSeek() {
     final pending = _pendingSeekAt;
     if (pending == null || pending <= Duration.zero) return;
@@ -617,7 +680,6 @@ final class LivePlayerFacade {
     _pendingSeekAt = null;
     unawaited(
       player.seek(pending).catchError((Object error, StackTrace stackTrace) {
-        // 起播位置落不下去不该影响播放本身：记一条日志就够。
         debugPrint('Seek to the declared start failed: $error');
       }),
     );
@@ -667,11 +729,6 @@ final class LivePlayerFacade {
         ? (fitList == null || fitList.isEmpty ? BoxFit.contain : fitList[fit.clamp(0, fitList.length - 1)])
         : fit as BoxFit;
     final video = getVideoWidget(resolved);
-    // 需要时**盖住**画面而不是把它换掉：视频组件必须留在树上继续解码，否则切回
-    // 视频要重建纹理、重新等首帧（media_kit 卸载 Video 就会释放纹理），而且帧
-    // 心跳一断，帧停滞看门狗会把好好在播的房间判成卡死。盖子有两种：纯音频模式
-    // 的卡片，和占位视频轨时的房间封面（见 [isDummyVideo]）。
-    // 盖子排在控制层下面，按钮仍然点得到。
     final children = <Widget>[video, ?pictureCover, ?controls];
     if (children.length == 1) return video;
     // expand is load-bearing: a default (loose) Stack sizes itself to the
@@ -683,7 +740,6 @@ final class LivePlayerFacade {
   }
 
   Future<void> close() async {
-    // 停止播放就要放掉中继：FFmpeg 进程和回环端口不能等到下一次开播或退出才释放。
     await _sourceInterceptor?.release();
     await _controller.close();
   }
@@ -743,8 +799,6 @@ class FacadeStreamCommit {
   final String dataSource;
   final Map<String, HlsSourceQueryPolicy> sourceQueryPolicies;
 
-  /// 平台为这批线路声明的容器/编码事实（`LivePlayUrlResolution.streamFacts`）。
-  /// 随提交保留：换引擎、悬浮窗重进都要用它重新决定要不要本地中继。
   final Map<String, LiveStreamFacts> streamFacts;
   final bool hasUseDefaultResolution;
 
@@ -840,7 +894,6 @@ class PlaybackSourceRefreshResult {
   final DateTime? invalidAt;
   final PlaybackSourceQualitySelection? selection;
 
-  /// 起播位置（点播稿件式的源才有：B 站轮播房的 `play_time`）。直播/回放恒为 0。
   final Duration startAt;
 }
 
@@ -858,13 +911,10 @@ class PlaybackSourceQualitySelection {
   final int currentQuality;
   final Map<String, HlsSourceQueryPolicy> sourceQueryPolicies;
 
-  /// 平台为这一档每条线路声明的容器/编码事实；取流接线据此决定要不要本地中继。
   final Map<String, LiveStreamFacts> streamFacts;
 
-  /// 平台为这一档声明的画面宽高比（上游 F.1b），null 表示没声明。
   final double? declaredAspectRatio;
 
-  /// 起播位置（上游 M7.1：B 站轮播房的 `play_time`）；直播/回放为 0。
   final Duration startAt;
 }
 
@@ -878,7 +928,6 @@ class _PipOverlayView extends StatefulWidget {
   final LivePlayerFacade facade;
   final Widget? danmaku;
 
-  /// 盖住画面的那一层（纯音频卡片 / 占位视频轨的房间封面），由展示层决定。
   final Widget? pictureCover;
 
   @override
@@ -904,7 +953,9 @@ class _PipOverlayViewState extends State<_PipOverlayView> {
     return defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
   }
 
-  bool get _showControls => _isTouchDevice || _hovered;
+  // 触屏（移动端）的画中画不显示任何 UI 控件：窗口小，控件只会挡住画面，
+  // 系统的 PiP 窗口本身就带播放/暂停和全屏手势。桌面保留 hover 显隐。
+  bool get _showControls => !_isTouchDevice && _hovered;
 
   @override
   Widget build(BuildContext context) {
@@ -931,26 +982,31 @@ class _PipOverlayViewState extends State<_PipOverlayView> {
           children: [
             // Rounded video corners: the window itself is rounded by the
             // desktop backend; the clip keeps the surface corners soft even
-            // where the system does not round (older Windows).
+            // where the system does not round (older Windows). 移动端的系统
+            // PiP 窗口是方的且自己管理外观，别再裁圆角——圆角会切掉画面四角。
             ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: _isTouchDevice ? BorderRadius.zero : BorderRadius.circular(12),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  GestureDetector(
-                    // The video surface stays gesture-first: single tap
-                    // toggles playback, double tap leaves PiP, and a drag
-                    // hands the pointer to the native caption-drag loop —
-                    // the compact window has no title bar, so a
-                    // surface-initiated drag is the only way to move it.
-                    onDoubleTap: () => unawaited(facade.exitPip()),
-                    onTap: facade.togglePlayPause,
-                    onPanStart: (_) => unawaited(windowsPipWindow.startDragging()),
-                    child: facade.getVideoWidget(BoxFit.contain),
-                  ),
-                  // 盖子自己 IgnorePointer，命中会落到下面那个 GestureDetector 上，
-                  // 所以单击暂停、双击退出、拖动移动窗口都照旧。弹幕留在盖子之上：
-                  // 纯音频时也还看得见聊天。
+                  // 触屏端（Android/iOS 系统 PiP）不挂任何手势识别器：Flutter
+                  // 一旦消费了拖动，系统的 PiP 窗口就收不到事件，窗口拖不动、
+                  // 单击也不会弹出系统的播放/关闭菜单。让系统全权处理。
+                  // 桌面小窗没有系统手势，surface 手势是唯一的操作入口。
+                  if (_isTouchDevice)
+                    facade.getVideoWidget(BoxFit.contain)
+                  else
+                    GestureDetector(
+                      // The video surface stays gesture-first: single tap
+                      // toggles playback, double tap leaves PiP, and a drag
+                      // hands the pointer to the native caption-drag loop —
+                      // the compact window has no title bar, so a
+                      // surface-initiated drag is the only way to move it.
+                      onDoubleTap: () => unawaited(facade.exitPip()),
+                      onTap: facade.togglePlayPause,
+                      onPanStart: (_) => unawaited(windowsPipWindow.startDragging()),
+                      child: facade.getVideoWidget(BoxFit.contain),
+                    ),
                   ?widget.pictureCover,
                   if (widget.danmaku != null) Positioned.fill(child: widget.danmaku!),
                 ],
@@ -1036,7 +1092,6 @@ class _PipOverlayViewState extends State<_PipOverlayView> {
   }
 }
 
-/// 引擎枚举到 media_core 后端 id 的映射，播放器工厂按 id 选实现。
 String backendIdOfEngine(PlayerEngine engine) => switch (engine) {
   PlayerEngine.mediaKit => kMediaKitPlayerBackendId,
   PlayerEngine.fijk => kIjkPlayerBackendId,

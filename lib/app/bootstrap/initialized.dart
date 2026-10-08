@@ -19,6 +19,7 @@ import 'package:windows_single_instance/windows_single_instance.dart';
 import 'package:pure_live/core/platform/mobile_manager.dart';
 import 'package:pure_live/core/platform/desktop_manager.dart';
 import 'package:pure_live/core/stream/upstream_proxy_routing.dart';
+import 'package:pure_live/core/player/core/playback_proxy_policy.dart';
 import 'package:pure_live/core/player/core/ingest_ffmpeg_registry.dart';
 import 'package:pure_live/domains/recorder/data/services/ffmpeg_ingest_starter.dart';
 import 'package:pure_live/domains/live/data/stream/ingest_source_interceptor.dart';
@@ -59,7 +60,6 @@ class AppInitializer {
     await PlatformUtils.initOhosDeviceType();
     configureDecodedImageCache(desktop: PlatformUtils.isDesktop);
     final String instanceId = WindowsMultiInstanceLauncher.instanceIdFromArgs(args);
-    // 一次性交接放在 Core，Features 读它时不必反向认识 App。
     InitialRoomHandoff.offer(WindowsMultiInstanceLauncher.roomFromArgs(args));
     await _initWindowsSingleInstance(args, instanceId);
 
@@ -95,7 +95,8 @@ class AppInitializer {
       final restored = await Get.find<BackupController>().recoverAndDelete(File(configFilePath));
       log('Windows multi-instance settings ${restored ? 'restored' : 'restore failed'}: $configFilePath');
     }
-    configureUpstreamProxyRouting((_) {
+    configureUpstreamProxyRouting((uri) {
+      if (playsDirectBehindProxy(uri)) return 'DIRECT';
       final proxy = SettingsService.to.proxy;
       return buildProxyDirective(
         enabled: proxy.enableAppProxy.v,
@@ -112,8 +113,6 @@ class AppInitializer {
     // failing. Registered here rather than in the domain: the domain only knows
     // the abstraction, and the FFmpeg runtime above is what makes it work.
     GlobalPlayerService.sourceInterceptorFactory = IngestSourceInterceptor.new;
-    // 自有输入（niconico/bigo/fc2 的席位获取）的播放绑定同样在启动时装配：
-    // 直播域只保留函数形状，实现坐在录制域的数据层。
     configureLiveInputPlaybackBinder(bindSiteInputForPlayback);
     configureWebSocketProxyRouting((_) {
       final proxy = SettingsService.to.proxy;

@@ -9,12 +9,15 @@ import 'package:pure_live/core/network/http_client.dart';
 import 'missevan_danmaku.dart';
 import 'package:pure_live/core/network/request_scope.dart';
 import 'package:pure_live/core/models/live_play_quality.dart';
+import 'package:pure_live/core/network/site_transport_failure.dart';
 
 enum MissevanFailure { transport, access, rateLimited, service, notFound, schema, cancelled, qualityUnavailable }
 
-class MissevanException implements Exception {
+class MissevanException implements Exception, SiteTransportFailure {
   const MissevanException(this.kind);
   final MissevanFailure kind;
+  @override
+  bool get isSiteUnreachable => kind == MissevanFailure.transport;
   @override
   String toString() => 'Missevan ${kind.name}';
 }
@@ -295,11 +298,9 @@ class MissevanApi {
       watching: score?.toString() ?? '',
       popularity: score?.toString() ?? '',
       audienceMetricType: AudienceMetricType.popularity,
-      // Official UI calls score 热度. online=0 and accumulation are not
       // evidence of concurrent viewers; attention_count is followers only.
       status: open == 1,
       liveStatus: open == 1 ? LiveStatus.live : LiveStatus.offline,
-      // 弹幕参数（上游 M5.12）：直播间号；在播时才给。
       danmakuData: open == 1 ? MissevanDanmakuArgs(roomId: id) : null,
     );
   }
@@ -323,9 +324,6 @@ class MissevanApi {
       return room; // Search metadata and offline rooms never inspect stale channel URLs.
     }
     final channel = _object(row['channel']);
-    // 上游 13-1：只有一个「原画」档（id 是拉流地址里的 qn，10000），它的线路是
-    // FLV 在前、HLS 作为备份。此前拆成 HLS/FLV 两个档，界面上是两个条目，
-    // 而且同一个档内部没有 FLV→HLS 的线路回退。
     final lines = <String>[];
     void addLine(Object? raw, String kind) {
       final value = _text(raw);

@@ -8,6 +8,7 @@ import 'package:pure_live/core/network/http_client.dart';
 import 'package:pure_live/core/network/request_scope.dart';
 
 import 'tiktok_link.dart';
+import 'package:pure_live/core/network/site_transport_failure.dart';
 
 enum TikTokFailure {
   transport,
@@ -22,26 +23,24 @@ enum TikTokFailure {
   mediaUnavailable,
 }
 
-class TikTokException implements Exception {
+class TikTokException implements Exception, SiteTransportFailure {
   const TikTokException(this.kind);
 
   final TikTokFailure kind;
 
   @override
+  bool get isSiteUnreachable => kind == TikTokFailure.transport;
+  @override
   String toString() => 'TikTok ${kind.name}';
 }
 
 enum TikTokState {
-  /// `status` 2：正在直播。
   live,
 
-  /// `status` 4：未开播。
   offline,
 
-  /// 其它状态或没有状态。
   unknown,
 }
-
 
 class TikTokStream {
   TikTokStream({
@@ -101,11 +100,8 @@ class TikTokRoom {
   final bool verified;
   final TikTokState state;
 
-  /// 谁可以看这场直播（仅 [state] 为 [TikTokState.live] 时有意义）：私密账号、
-  /// 订阅者专属、付费（上游 22-1：受限的直播仍然是"在播"）。
   final LiveRestriction restriction;
 
-  /// `liveRoom.startTime`（Unix 秒）转成的 UTC 时间。
   final DateTime? startedAt;
   final List<TikTokStream> streams;
 }
@@ -262,9 +258,6 @@ class TikTokApi {
     if (actualUsername != username) throw const TikTokException(TikTokFailure.identity);
 
     final liveStatus = _integer(live['status'] ?? user['status']);
-    // 受限的直播仍然是"在播"，只是标明谁可以看（上游 22-1；3.x 与改前显示为
-    // 封禁）：私密账号 → private，`liveSubOnly` 1 → subscribersOnly，
-    // `paidEvent.paid_type` > 0 → paid。
     final restriction = restrictionOf(user, live);
     final state = liveStatus == 2
         ? TikTokState.live
@@ -292,16 +285,12 @@ class TikTokApi {
       state: state,
       restriction: state == TikTokState.live ? restriction : LiveRestriction.none,
       startedAt: state == TikTokState.live ? startTime(live['startTime']) : null,
-      // 受限的直播不再读流（读了也播不了，上游只在无限制时读）。
       streams: state == TikTokState.live && includeMedia && restriction == LiveRestriction.none
           ? _streams(live)
           : const [],
     );
   }
 
-  /// 谁可以看这场直播，按 3.x 的检查顺序：私密账号（`user.secret`）→ private，
-  /// `liveRoom.liveSubOnly` 为 1 → subscribersOnly，`paidEvent.paid_type` 大于 0
-  /// → paid；否则 none（上游 22-1）。
   static LiveRestriction restrictionOf(Map<String, dynamic> user, Map<String, dynamic> live) {
     if (_optionalBool(user['secret']) == true) return LiveRestriction.private;
     if (_integer(live['liveSubOnly']) == 1) return LiveRestriction.subscribersOnly;
@@ -313,8 +302,6 @@ class TikTokApi {
     return LiveRestriction.none;
   }
 
-  /// `liveRoom.startTime`（Unix 秒）转成 UTC 时间；缺失、不是整数或超出
-  /// 2000–2100 年时返回 null（上游同一规则）。
   static DateTime? startTime(Object? value) {
     final seconds = _integer(value);
     if (seconds == null) return null;
@@ -335,8 +322,6 @@ class TikTokApi {
     return _username(_object(data['owner'])['display_id']);
   }
 
-  /// 读一个 stream_data 容器（`streamData`/`hevcStreamData`）：一档里每个协议
-  /// 一条线路，读不出来的地址只丢那条线（上游 22-6）。
   static void _readContainer(Object? value, String fallbackCodec, Map<String, _TikTokStreamBuilder> builders) {
     final container = _object(value);
     final pull = _object(container['pull_data']);
@@ -386,8 +371,6 @@ class TikTokApi {
     final builders = <String, _TikTokStreamBuilder>{};
     void readContainer(Object? value, String fallbackCodec) {
       if (value == null) return;
-      // 坏容器/坏档位只损失它自己（上游 22-6）：一个读不出来的 stream_data
-      // 不能让整次详情解析失败。
       try {
         _readContainer(value, fallbackCodec, builders);
       } on TikTokException {

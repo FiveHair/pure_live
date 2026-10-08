@@ -10,6 +10,7 @@ import 'package:pure_live/shared/platforms/live_site.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:pure_live/core/player/kernel/player_consts.dart';
 import 'package:pure_live/core/player/core/playback_source.dart';
+import 'package:pure_live/core/network/site_transport_failure.dart';
 import 'package:media_core/media_core.dart' show PlayerException, PlayerErrorCode;
 import 'package:pure_live/core/utils/live_quality_label.dart';
 import 'package:pure_live/domains/live/domain/live_player_facade.dart';
@@ -108,6 +109,18 @@ List<LivePlayQuality> _qualityChoicesWithConfirmation(
   ]);
 }
 
+/// Which message a failed stream-metadata request deserves.
+///
+/// A site adapter's `transport` failure says the platform never gave a usable
+/// answer — that is a statement about reaching the platform, not about the
+/// room. Which leg broke matters here, because the two proxy switches are easy
+/// what the page and API calls that produced that address go through. Reporting
+/// adapter instead of the setting that governs it.
+@visibleForTesting
+String streamMetadataFailureKey({required Object error, required bool appProxyEnabled}) =>
+    isUnreachableSiteFailure(error)
+        ? (appProxyEnabled ? 'site_unreachable_via_proxy' : 'site_unreachable')
+        : 'read_video_failed';
 @visibleForTesting
 List<LivePlayQuality> normalizePlayQualities(Iterable<LivePlayQuality> qualities) {
   final unique = <LivePlayQuality>[];
@@ -284,10 +297,6 @@ class PlayerController extends GetxController {
         current?.platform == liveroom.platform;
   }
 
-  /// 解析指定站点/房间的播放请求头（单一事实来源）。
-  ///
-  /// 主房间路径（[getHeaders]）与 multiview 每格解析器共用此入口，
-  /// 保证 Cookie/UA/Referer 等鉴权头逻辑不发生漂移。
   static Future<Map<String, String>> resolvePlaybackHeaders({required Site site, required LiveRoom? liveroom}) async {
     return PlaybackHeaderResolver.resolve(
       platform: site.id,
@@ -362,9 +371,7 @@ class PlayerController extends GetxController {
         selection: PlaybackSourceQualitySelection(
           sourceQueryPolicies: resolution.sourceQueryPolicies,
           streamFacts: resolution.streamFacts,
-          // 平台声明的画面宽高比（上游 F.1b）：解码器报出真实尺寸前按它排版。
           declaredAspectRatio: resolution.declaredAspectRatio,
-          // 轮播房的起播位置（上游 M7.1）：播放器在时长就绪后 seek 一次。
           startAt: resolution.startAt,
           qualities: _qualityChoicesWithConfirmation(choices, requestedIndex, resolution),
           currentQuality: resolveAppliedQualityIndex(
@@ -379,7 +386,6 @@ class PlayerController extends GetxController {
         invalidAt: liveSite is LivePlayLeaseMetadata
             ? (liveSite as LivePlayLeaseMetadata).getPlayUrlInvalidAt(urls[preferredIndex])
             : null,
-        // 轮播房的起播位置（点播稿件，直播/回放恒为 0）。
         startAt: resolution.startAt,
       );
     };
@@ -626,7 +632,10 @@ class PlayerController extends GetxController {
         name: 'PlayerController',
         stackTrace: stackTrace,
       );
-      ToastUtil.show(i18n('read_video_failed'));
+      ToastUtil.show(i18n(streamMetadataFailureKey(
+        error: error,
+        appProxyEnabled: SettingsService.to.proxy.enableAppProxy.v,
+      )));
       _main.updateRoom(success: false);
     }
   }
@@ -869,7 +878,10 @@ class PlayerController extends GetxController {
             error: error,
             stackTrace: stackTrace,
           );
-          ToastUtil.show(i18n('read_video_failed'));
+          ToastUtil.show(i18n(streamMetadataFailureKey(
+            error: error,
+            appProxyEnabled: SettingsService.to.proxy.enableAppProxy.v,
+          )));
         }
       }
       return false;
@@ -928,7 +940,6 @@ class PlayerController extends GetxController {
   @override
   @override
   void onInit() {
-    // 站点适配器需要只读地知道当前在播的房间，由这里挂载，数据层不再 find 页面控制器。
     CurrentLiveRoom.provider = () => currentRoom;
     super.onInit();
   }

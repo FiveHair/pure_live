@@ -9,13 +9,16 @@ import 'package:pure_live/core/network/http_client.dart';
 import 'package:pure_live/core/network/request_scope.dart';
 import 'package:pure_live/shared/platforms/live_directory.dart';
 import 'package:pure_live/core/models/live_play_quality.dart';
+import 'package:pure_live/core/network/site_transport_failure.dart';
 
 enum InkeFailure { transport, access, rateLimited, service, notFound, schema, cancelled, mediaUnavailable }
 
-class InkeException implements Exception {
+class InkeException implements Exception, SiteTransportFailure {
   const InkeException(this.kind, {this.message});
   final InkeFailure kind;
   final String? message;
+  @override
+  bool get isSiteUnreachable => kind == InkeFailure.transport;
   @override
   String toString() => message ?? 'Inke ${kind.name}';
 }
@@ -335,13 +338,11 @@ class InkeApi {
       isRecord: false,
       watching: '',
       audienceMetricType: AudienceMetricType.unknown,
-      // `start_time`（Unix 秒）就是这场直播的开播时间（上游 14-x 统一规则）。
       startedAt: _startedAt(info['start_time']),
       data: playback ? [LivePlayQuality(id: 'flv', quality: 'FLV', data: urls)] : null,
     );
   }
 
-  /// `start_time`（Unix 秒）→ UTC；读不出来或不在 2000–2100 年则不给。
   static DateTime? _startedAt(Object? value) {
     final seconds = int.tryParse(_text(value));
     if (seconds == null || seconds <= 0) return null;

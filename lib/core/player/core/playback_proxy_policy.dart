@@ -2,6 +2,13 @@ import 'package:pure_live/core/config/settings_service.dart';
 import 'package:pure_live/core/network/proxy_routing.dart';
 import 'package:pure_live/core/platform/windows_system_proxy.dart';
 
+const List<String> proxyDirectHostSuffixes = ['steamcontent.com'];
+
+bool playsDirectBehindProxy(Uri uri) {
+  final host = uri.host.toLowerCase();
+  return proxyDirectHostSuffixes.any((suffix) => host == suffix || host.endsWith('.$suffix'));
+}
+
 /// Media transport settings, deliberately independent of the application/API
 /// proxy used by recording's existing HTTP relay.
 class PlaybackProxyPolicy {
@@ -16,9 +23,6 @@ class PlaybackProxyPolicy {
         port: proxy.proxyPort.value,
       );
       if (directive != 'DIRECT') return directive;
-      // 没有单独配置播放器代理时跟随 Windows 系统代理：Clash 这类工具打开的就是
-      // 系统代理，用户不会想到还要在应用里再配一遍；而"能列出房间却播不动"的
-      // 症状和平台挂了从外面看一模一样。
       return WindowsSystemProxy.directive();
     } catch (_) {
       return 'DIRECT';

@@ -1,7 +1,6 @@
 import 'package:pure_live/shared/platforms/live_quality_discovery.dart';
 import 'package:pure_live/domains/recorder/data/services/recording_bitrate_window.dart';
 import 'package:pure_live/domains/recorder/data/services/live_input_recording_binder.dart';
-import 'package:pure_live/core/utils/live_quality_label.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -131,6 +130,47 @@ class RecorderController extends GetxService {
     _danmakuTasksWorker = ever<List<LiveRecordTask>>(tasks, _danmakuRecorder.sync);
     _danmakuSettingWorker = ever<bool>(settings.recordDanmaku, (_) => _danmakuRecorder.sync(tasks));
     unawaited(restoreAndAutoPoll());
+    // 不在 onInit 里弹私有目录警告：RecorderController 随直播间页惰性初始化，
+    // 自动弹窗会变成"一进直播间就弹"。改为点录制时检查（见 [ensureRecordDirUsable]）。
+  }
+
+  bool _privateDirWarningShown = false;
+
+  /// 录制入口的就绪检查：录制目录落在 Android 应用私有目录时，其它应用读不到
+  /// 录制文件。只在用户真正点录制时提示一次，弹窗的"更改"跳录制设置页选目录。
+  ///
+  /// 返回 true 表示可以继续本次录制（目录可用，或用户选择忽略/已完成处理）。
+  Future<bool> ensureRecordDirUsable() async {
+    if (_isClosing) return false;
+    final isPrivate = await CacheService.to.isRecordDirPrivate();
+    if (!isPrivate || _isClosing) return true;
+    // 同一次会话只问一遍；用户选择忽略后不再打断后续录制。
+    if (_privateDirWarningShown) return true;
+    _privateDirWarningShown = true;
+    // 按钮用对话框自己的 BuildContext 走原生 Navigator.pop，只弹对话框这一层。
+    // Get.back 弹的是 GetX 全局导航栈的顶层路由，直播间在栈里时会被误弹退出。
+    final change = await Get.dialog<bool>(
+      Builder(
+        builder: (dialogContext) => AlertDialog(
+          title: Text(i18n('recorder_private_dir_title')),
+          content: Text(i18n('recorder_private_dir_message')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(i18n('recorder_private_dir_ignore')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(i18n('recorder_private_dir_change')),
+            ),
+          ],
+        ),
+      ),
+      barrierDismissible: false,
+    );
+    if (change != true || _isClosing) return true;
+    await Get.toNamed(RoutePath.kRecordSettings);
+    return true;
   }
 
   /// Opt-in chat capture beside each attempt's video. It only observes task
@@ -904,7 +944,7 @@ class RecorderController extends GetxService {
 
       task
         ..currentUrl = ownedSource == null ? resolved.url : null
-        ..selectedQuality = resolved.quality.playbackLabel
+        ..selectedQuality = resolved.quality.quality
         ..selectedQualityId = resolved.qualityCursorId
         ..selectedLineIndex = resolved.lineIndex
         ..selectedLine = resolved.lineLabel
@@ -951,6 +991,9 @@ class RecorderController extends GetxService {
           // can be admitted atomically; owned inputs bring their own relay.
           hlsPrefetch: true,
           sourceQueryPolicy: resolved.sourceQueryPolicy,
+          // The site's declared container/codec facts drive the same relay
+          // decision playback uses, instead of each relay guessing from the URL.
+          facts: resolved.facts,
         );
       }
       if (identical(_pendingRecorderLeases[task.taskId], pendingLease)) {
@@ -1233,6 +1276,20 @@ class RecorderController extends GetxService {
     });
   }
 
+  /// 录制总开关被关闭时停掉全部进行中的任务（UI 隐藏入口外的兜底）
+  Future<void> stopAllWhenDisabled() async {
+    if (_isClosing) return;
+    final active = tasks
+        .where((t) => t.status == RecordStatus.queued ||
+            t.status == RecordStatus.preparing ||
+            t.status == RecordStatus.running ||
+            t.status == RecordStatus.reconnecting)
+        .toList();
+    for (final task in active) {
+      await stopTask(task);
+    }
+  }
+
   Future<void> stopTask(LiveRecordTask task) {
     if (_isClosing || !_ownsTask(task)) return Future.value();
     _cancelUserStart(task.taskId);
@@ -1459,6 +1516,10 @@ class RecorderController extends GetxService {
   }
 
   Future<void> restoreAndAutoPoll() {
+    // 录制总开关关闭时不恢复任务与开播监控
+    if (!SettingsService.to.app.enableRecorder.v) {
+      return _restoreInFlight ?? Future<void>.value();
+    }
     if (_isClosing) return Future<void>.value();
     final existing = _restoreInFlight;
     if (existing != null) return existing;
@@ -1601,6 +1662,18 @@ class RecorderController extends GetxService {
 
   Future<void> openFileDir() async {
     await FileUtils.openFileOrUrl(await CacheService.to.getDisplayPath());
+  }
+
+  Future<void> openTaskDir(LiveRecordTask task) async {
+    final dir = task.outputDir;
+    if (dir == null || dir.isEmpty) return;
+    await FileUtils.openFileOrUrl(dir);
+  }
+
+  Future<void> playTaskVideo(LiveRecordTask task) async {
+    final dir = task.outputDir;
+    if (dir == null || dir.isEmpty) return;
+    Get.toNamed(RoutePath.kLocalVideoPlayer, arguments: {'dir': dir, 'title': task.title, 'nick': task.nick});
   }
 
   @override

@@ -84,10 +84,6 @@ jobs:
             sleep 15
           done
           for i in 1 2 3; do
-            git clone --depth 1 https://github.com/liuchuancong/flame_barrage.git "$RUNNER_TEMP/flame_barrage" && break
-            sleep 15
-          done
-          for i in 1 2 3; do
             git clone https://github.com/Predidit/media-kit.git "$RUNNER_TEMP/media-kit-predidit" && break
             sleep 15
           done
@@ -111,9 +107,8 @@ jobs:
         run: |
           W="$(cygpath -m "$RUNNER_TEMP")"
           sed -i "s|D:/DEV/media_core/packages|$W/media_core/packages|g; \
-                  s|D:/DEV/flame_barrage|$W/flame_barrage|g; \
                   s|D:/DEV/media-kit-predidit|$W/media-kit-predidit|g" pubspec.yaml
-          grep -nE "media_core|flame_barrage|media-kit-predidit" pubspec.yaml | head -6
+          grep -nE "media_core|media-kit-predidit" pubspec.yaml | head -6
         working-directory: ${{ github.workspace }}
         shell: bash
 

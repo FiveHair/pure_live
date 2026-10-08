@@ -114,3 +114,16 @@ DevEco 的 ohpm.bat 有无限批处理递归 bug，垫片直接以 node 运行 p
 - [Predidit/media-kit](https://github.com/Predidit/media-kit) `ohos 视频管线`
 - [ErBWs/setup-ohos](https://github.com/ErBWs/setup-ohos) `CI 鸿蒙工具链`
 - [ErBWs/Kazumi](https://github.com/ErBWs/Kazumi) `鸿蒙适配参考`
+
+## v3.1.18 上游同步与新增
+
+- 已同步上游 v3.1.18（media_core 改为 git 依赖 @5b04714，本地经
+  `dependency_overrides` 指向补丁副本，补丁见 `tool/patches/media_core_ohos.patch`）
+- 上游已内置小窗弹幕同步：主弹幕设置直接作用于小窗，字号按小窗宽度
+  自动等比缩放（`pipDanmakuAutoScale`，默认开启，0.4-1.0）
+- 新增录制功能总开关（设置 → 导航与显示）：关闭后隐藏首页录制页签、
+  关注页"录播"分区、直播间录制按钮与导航配置项，停用任务恢复/开播
+  监控，并停止进行中的录制任务
+- 鸿蒙系统级画中画（PiP）：暂无现成 flutter_ohos 插件；原生能力为
+  `@ohos.PiPWindow`（API 11+），需自研插件做纹理桥接，列入后续计划。
+  应用内小窗（`media_core_floating`）在鸿蒙上已可用

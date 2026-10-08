@@ -104,6 +104,7 @@ class _RecordActionButtonState extends State<RecordActionButton> {
   }
 
   Future<void> _handlePressed(BuildContext context, LiveRoom liveroom) async {
+    if (!SettingsService.to.app.enableRecorder.v) return;
     if (_busy) return;
     setState(() => _busy = true);
     try {
@@ -159,6 +160,11 @@ class _RecordActionButtonState extends State<RecordActionButton> {
       return;
     }
 
+    // 私有目录就绪检查在录制意图上触发，不在进直播间时自动弹。
+    if (!await widget.recorderController.ensureRecordDirUsable()) {
+      return;
+    }
+
     if (exists && task != null) {
       await widget.recorderController.forceStartTask(task);
       return;
@@ -172,6 +178,10 @@ class _RecordActionButtonState extends State<RecordActionButton> {
 
   Future<void> _addMonitor({required LiveRoom liveroom, required bool exists}) async {
     if (exists) {
+      return;
+    }
+
+    if (!await widget.recorderController.ensureRecordDirUsable()) {
       return;
     }
 

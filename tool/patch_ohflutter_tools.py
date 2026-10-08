@@ -34,6 +34,37 @@ BUILDER_NEW = """      for (final FileSystemEntity entity in nativeAssetsArchDir
         final RegExp soPattern = RegExp(r'\\.so(\\.\\d+)?$');
         if (entity is File && soPattern.hasMatch(entity.basename)) {"""
 
+
+ARTIFACTS_REL = os.path.join(
+    "packages", "flutter_tools", "lib", "src", "artifacts.dart"
+)
+
+ARTIFACTS_OLD = """      case Artifact.engineDartSdkPath:
+      case Artifact.engineDartBinary:
+      case Artifact.engineDartAotRuntime:
+      case Artifact.frontendServerSnapshotForEngineDartSdk:
+      case Artifact.constFinder:
+      case Artifact.flutterFramework:
+      case Artifact.flutterFrameworkDsym:
+      case Artifact.flutterMacOSFramework:
+        return _getMacOSFrameworkPath(engineDir, _fileSystem, _platform);"""
+
+ARTIFACTS_NEW = """      case Artifact.engineDartSdkPath:
+      case Artifact.engineDartBinary:
+      case Artifact.engineDartAotRuntime:
+      case Artifact.frontendServerSnapshotForEngineDartSdk:
+      case Artifact.constFinder:
+        // patched: dart toolchain artifacts resolve via host artifacts.
+        return _getHostArtifactPath(
+          artifact,
+          _currentHostPlatform(_platform, _operatingSystemUtils),
+          mode,
+        );
+      case Artifact.flutterFramework:
+      case Artifact.flutterFrameworkDsym:
+      case Artifact.flutterMacOSFramework:
+        return _getMacOSFrameworkPath(engineDir, _fileSystem, _platform);"""
+
 HVIGOR_OLD = """          for (const file of files) {
             if (file.endsWith('.so')) {"""
 HVIGOR_NEW = """          for (const file of files) {
@@ -124,6 +155,7 @@ def patch_gen_snapshot_urls(sdk):
 def main():
     sdk = sys.argv[1] if len(sys.argv) > 1 else r"D:\flutter_ohos_347"
     patch_file(sdk, BUILDER_REL, BUILDER_OLD, BUILDER_NEW, "ohos_builder.dart")
+    patch_file(sdk, ARTIFACTS_REL, ARTIFACTS_OLD, ARTIFACTS_NEW, "artifacts.dart")
     patch_file(sdk, HVIGOR_REL, HVIGOR_OLD, HVIGOR_NEW, "flutter-hvigor-plugin.ts")
     patch_gen_snapshot_urls(sdk)
     for f in (

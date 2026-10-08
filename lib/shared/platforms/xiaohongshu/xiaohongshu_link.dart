@@ -1,7 +1,7 @@
-import 'package:pure_live/shared/platforms/live_short_link_session.dart';
-
 import 'xiaohongshu_api.dart';
 import 'xiaohongshu_share.dart';
+
+import 'package:pure_live/shared/platforms/live_short_link_session.dart';
 
 /// Broadcast room identity only. Profile IDs, notes and recommended rooms are
 /// not aliases. Resolve short links only within the observed share hosts/routes.
@@ -22,7 +22,6 @@ class XiaohongshuLink {
       return null;
     }
     try {
-      // 只要求恰好一个 `room_id`；`source` 不再必需（上游 16-2）。
       final room = uri.queryParametersAll['room_id'];
       if (room?.length != 1) return null;
       final id = room!.single;
@@ -73,17 +72,44 @@ class XiaohongshuLink {
 
   static Uri? shortUri(String raw) {
     final uri = _webUri(raw);
-    if (uri == null || uri.host != 'xhslink.com' || !RegExp(r'^/(?:m/)?[A-Za-z0-9]{1,64}/?$').hasMatch(uri.path)) {
+    if (uri == null ||
+        uri.host != 'xhslink.com' ||
+        !RegExp(r'^/(?:[A-Za-z]{1,4}/)?[A-Za-z0-9]{1,64}/?$').hasMatch(uri.path)) {
       return null;
     }
     return uri;
+  }
+
+  /// A share text mixes prose and a link, so a pasted message is searched too.
+  static final RegExp _urlInText = RegExp(r'https?://[^\s，。；！？、【】《》「」『』（）·…]+');
+
+  static List<String> extractUrls(String raw) {
+    if (raw.length > 8192) return const [];
+    final urls = <String>[];
+    for (final match in _urlInText.allMatches(raw)) {
+      var url = match.group(0)!;
+      while (url.length > 1 && url.endsWith('.')) {
+        url = url.substring(0, url.length - 1);
+      }
+      urls.add(url);
+    }
+    return urls;
   }
 
   static Future<String?> resolve(String raw, {required LiveShortLinkSession session}) async {
     if (session.isClosed) return null;
     final direct = parse(raw);
     if (direct != null) return direct;
-    var current = shortUri(raw);
+    // first as a room link, then as a short link to follow.
+    Uri? current = shortUri(raw);
+    if (current == null) {
+      for (final candidate in extractUrls(raw)) {
+        final room = parse(candidate);
+        if (room != null) return room;
+        current = shortUri(candidate);
+        if (current != null) break;
+      }
+    }
     while (current != null && !session.isClosed) {
       final response = await session.get(current, headers: XiaohongshuApi.headers);
       if (session.isClosed ||

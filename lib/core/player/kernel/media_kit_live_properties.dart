@@ -136,11 +136,15 @@ abstract final class MediaKitLiveProperties {
     // those produce sound-without-picture or a rogue mpv window.
     final vo = segment.customPlayerOutput && segment.videoOutputDriver.trim() == 'libmpv' ? 'libmpv' : null;
 
-    return mkv.VideoControllerConfiguration(
-      vo: vo,
-      hwdec: segment.customPlayerOutput ? _normalize(segment.videoHardwareDecoder) : null,
-      enableHardwareAcceleration: segment.enableCodec,
-    );
+    var hwdec = segment.customPlayerOutput ? _normalize(segment.videoHardwareDecoder) : null;
+    // NativeVideoController.create rewrites a null hwdec to 'auto'. That would
+    // resurrect VideoToolbox exactly where build() forces 'no' — its decode
+    // path is unstable with the Flutter texture surface and crashes macOS on
+    // room entry — and it would also override an enableCodec=false choice on
+    // every platform. 'no' has to travel as an explicit value.
+    if (!segment.enableCodec || Platform.isMacOS) hwdec ??= 'no';
+
+    return mkv.VideoControllerConfiguration(vo: vo, hwdec: hwdec, enableHardwareAcceleration: segment.enableCodec);
   }
 
   /// Normalises a pick; empty/auto leaves the engine default.
@@ -199,46 +203,29 @@ abstract final class MediaKitLiveProperties {
   /// The native player configuration; only the log level differs from media_kit's
   /// defaults, since passing this object at all means restating them.
   static mkv.PlayerConfiguration playerConfiguration() => mkv.PlayerConfiguration(
-    // mpv 自己的日志默认只产出 error 级别，而且没人订阅（见 attachMpvLogForwarder）。
-    // 直播卡顿的一手证据——清单重载失败、分片的 HTTP 状态、cache-pause 为什么暂停
-    // ——都在 warn/v 级别里。发布构建收到 warn，调试构建收到 v。
     logLevel: const bool.fromEnvironment('dart.vm.product') ? mkv.MPVLogLevel.warn : mkv.MPVLogLevel.v,
   );
 
-  /// 按源决定的 mpv 属性。
-  ///
-  /// 装配期那张表整个引擎生命周期只有一份，而这两项每条源都不一样：本机输入不能
-  /// 走代理，容器格式只有解析播放地址的平台知道。[proxy] 由调用方从
-  /// `PlaybackProxyPolicy` 取好再传进来，判定本身就是纯函数。
   static Map<String, String> sourceProperties({
     required Uri uri,
     required String? declaredFormat,
     required String proxy,
   }) {
     final bool privateInput = isPrivatePlaybackInput(uri);
-    // 声明优先，其次 URL 形状（Twitch 那种把签名塞进路径里的 `/v1/playlist/….m3u8`
-    // 两种判据都认得出）。
     final bool playlist = (declaredFormat ?? (isHlsManifestUri(uri) ? 'hls' : null)) == 'hls';
+    // 远端渐进式流（FLV 等）一律按直播对待：直播数据没有"缓存目标凑齐"的
+    // 那一刻，cache-pause 只会播两秒后停进缓冲再续播——观察到的
+    // "先播后暂停再加载"就是它。本机/回环输入（file、127.0.0.1）是点播，
+    // 保留 cache-pause 那套假设。
+    final bool liveProgressive = !privateInput && !playlist;
     return <String, String>{
-      'http-proxy': privateInput ? '' : proxy,
-      // 指死解复用器就跳过了 mpv 的格式探测：2MB 的 probesize 在高延迟线路上正好
-      // 吃掉"8 秒卡在 0ms 判死"的那份起播预算。空串是清除——引擎是跨源复用的，
-      // 上一条源强制的 hls 不能漏到这一条 FLV 上。本机输入不猜：探测本机不要钱，
-      // 而 Dart 重写的 HEVC FLV 中继输出的根本不是 HLS。
+      'http-proxy': privateInput || playsDirectBehindProxy(uri) ? '' : proxy,
       'demuxer-lavf-format': playlist && !privateInput ? 'hls' : '',
-      // 直播清单读到边缘就没有更多数据了，点播那套"可拖动 + 缓存低了自动暂停"的
-      // 假设在这里只会把播放器停住：cache-pause-wait 要的 4 秒永远凑不齐，而
-      // force-seekable 正是让 mpv 把直播当成可拖动流、从而启用 cache-pause 的那一步。
-      // 渐进式的 FLV/TS 数据连续到达，缓存目标凑得齐，保留原样。
-      'force-seekable': playlist ? 'no' : 'yes',
-      'cache-pause': playlist ? 'no' : 'yes',
+      'force-seekable': playlist || liveProgressive ? 'no' : 'yes',
+      'cache-pause': playlist || liveProgressive ? 'no' : 'yes',
     };
   }
 
-  /// 把 [sourceProperties] 写到即将打开这条源的引擎上。
-  ///
-  /// 挂在 media_kit 适配器的 `beforeOpen`：引擎已经存在、还没拿到 URL，属性正好
-  /// 落在这次打开上，而且在打开窗口之外，引擎事件不会被误判成打开失败。
   static Future<void> applyToSource(Player player, PlayerSource source) async {
     final platform = player.platform;
     if (platform is! NativePlayer) return;
@@ -247,8 +234,6 @@ abstract final class MediaKitLiveProperties {
       declaredFormat: declaredStreamFormatOf(source),
       proxy: PlaybackProxyPolicy.currentNativeUrl(privateInput: false),
     );
-    // 应用代理与播放器代理是两套开关，界面之外看不出播放器这一套到底生没生效，
-    // 而"能列出房间却播不动"正是它没生效的样子，所以每条源都记一行。
     developer.log('${source.uri.host} -> $properties', name: 'PlaybackProxy');
     for (final entry in properties.entries) {
       await platform.setProperty(entry.key, entry.value);

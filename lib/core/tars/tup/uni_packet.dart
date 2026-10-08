@@ -11,8 +11,6 @@ class UniPacket extends UniAttribute {
 
   RequestPacket package = RequestPacket();
 
-  /// 获取请求的service名字
-  ///
   /// @return
   String get servantName {
     return package.sServantName;
@@ -22,8 +20,6 @@ class UniPacket extends UniAttribute {
     package.sServantName = value;
   }
 
-  /// 获取请求的函数名字
-  ///
   /// @return
   String get funcName {
     return package.sFuncName;
@@ -33,8 +29,6 @@ class UniPacket extends UniAttribute {
     package.sFuncName = value;
   }
 
-  /// 获取消息序列号
-  ///
   /// @return
   int get requestId {
     return package.iRequestId;
@@ -57,7 +51,6 @@ class UniPacket extends UniAttribute {
     return package.iVersion;
   }
 
-  /// 将put的对象进行编码
   @override
   Uint8List encode() {
     if (package.sServantName.compareTo("") == 0) {
@@ -89,7 +82,6 @@ class UniPacket extends UniAttribute {
     return buffer.done().buffer.asUint8List();
   }
 
-  /// 对传入的数据进行解码 填充可get的对象
   @override
   void decode(Uint8List buffer, {int index = 0}) {
     if (buffer.lengthInBytes < kUniPacketHeadSize) {
@@ -98,10 +90,8 @@ class UniPacket extends UniAttribute {
     try {
       TarsInputStream inputStream = TarsInputStream(buffer, pos: kUniPacketHeadSize + index);
       inputStream.setServerEncoding(encodeName);
-      //解码出RequestPacket包
       readFrom(inputStream);
 
-      //设置tup版本
       version = package.iVersion;
 
       inputStream = TarsInputStream(package.sBuffer);

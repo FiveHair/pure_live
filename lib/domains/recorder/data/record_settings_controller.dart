@@ -11,17 +11,25 @@ import 'package:pure_live/domains/recorder/data/services/cache_service.dart';
 
 typedef RecordDirectoryPicker = Future<String?> Function();
 
+/// Requests the storage access the recording directory needs. Defaults to
+/// [FileUtils.requestStoragePermission], which is a no-op returning true on
+/// non-Android hosts, so only the Android public-directory case can deny.
+typedef RecordStoragePermissionRequest = Future<bool> Function();
+
 class RecordSettingsController extends GetxController {
-  RecordSettingsController({RecordDirectoryPicker? directoryPicker})
-    : _directoryPicker = directoryPicker ?? (() => FilePicker.getDirectoryPath());
+  RecordSettingsController({
+    RecordDirectoryPicker? directoryPicker,
+    RecordStoragePermissionRequest? storagePermission,
+  }) : _directoryPicker = directoryPicker ?? (() => FilePicker.getDirectoryPath()),
+       _storagePermission = storagePermission ?? FileUtils.requestStoragePermission;
 
   final RecordDirectoryPicker _directoryPicker;
+  final RecordStoragePermissionRequest _storagePermission;
   Future<void>? _storageInitialization;
   Future<void>? _cacheLimitApplication;
   int _cacheLimitRevision = 0;
 
   /// =====================================
-  /// 基础配置
   /// =====================================
   final defaultQuality = RecorderConfig.defaultQuality.obs;
   final recordSavePath = RecorderConfig.recordSavePath.obs;
@@ -33,7 +41,6 @@ class RecordSettingsController extends GetxController {
   final cacheClearPending = false.obs;
 
   /// =====================================
-  /// 录制性能与画质
   /// =====================================
   final segmentTime = RecorderConfig.segmentTime.obs;
   final maxTaskCount = RecorderConfig.maxTaskCount.obs;
@@ -42,14 +49,12 @@ class RecordSettingsController extends GetxController {
   final threadQueueSize = RecorderConfig.threadQueueSize.obs;
 
   /// =====================================
-  /// 自动重连逻辑
   /// =====================================
   final autoReconnect = hiveBool(RecorderKeys.autoReconnect, RecorderConfig.defaultAutoReconnect);
   final maxRetryCount = RecorderConfig.maxRetryCount.obs;
   final retryDelay = RecorderConfig.retryDelay.obs;
 
   /// =====================================
-  /// 挂机检测轮询
   /// =====================================
   final enablePolling = hiveBool(RecorderKeys.enablePolling, RecorderConfig.defaultEnablePolling);
   final liveCheckInterval = RecorderConfig.liveCheckInterval.obs;
@@ -62,7 +67,6 @@ class RecordSettingsController extends GetxController {
   /// Saves live chat beside each recorded video as `<file>.xml` (opt-in).
   final recordDanmaku = hiveBool(RecorderKeys.recordDanmaku, RecorderConfig.defaultRecordDanmaku);
 
-  /// 缓存限制开关
   final enableCacheLimit = hiveBool(RecorderKeys.enableCacheLimit, RecorderConfig.defaultEnableCacheLimit);
 
   @override
@@ -88,7 +92,6 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 刷新缓存大小
   /// =====================================
   Future<void> refreshCacheSize() async {
     cacheSizeMB.value = await CacheService.to.getCacheSize();
@@ -100,13 +103,7 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 更新缓存限制开关
   /// =====================================
-  ///
-  /// enableCacheLimit 使用 hiveBool() 后，
-  /// 修改 value 会自动保存到 Hive。
-  ///
-  /// 保留这个方法是为了兼容现有 UI 调用。
   Future<void> updateEnableCacheLimit(bool v) async {
     enableCacheLimit.value = v;
     await _applyCacheLimit();
@@ -137,7 +134,6 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 清除缓存
   /// =====================================
   Future<void> clearCache() async {
     await CacheService.to.clearAll();
@@ -145,7 +141,6 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 更新切片时长
   /// =====================================
   Future<void> updateSegmentTime(int v) async {
     final normalized = RecorderConfig.normalizeSegmentTime(v);
@@ -154,7 +149,6 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 更新最大任务数
   /// =====================================
   Future<void> updateMaxTask(int v) async {
     final normalized = RecorderConfig.normalizeMaxTaskCount(v);
@@ -163,19 +157,12 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 更新自动重连
   /// =====================================
-  ///
-  /// autoReconnect 使用 hiveBool() 后，
-  /// 修改 value 会自动保存到 Hive。
-  ///
-  /// 保留这个方法是为了兼容现有 UI 调用。
   Future<void> updateAutoReconnect(bool v) async {
     autoReconnect.value = v;
   }
 
   /// =====================================
-  /// 更新最大重试次数
   /// =====================================
   Future<void> updateMaxRetryCount(int v) async {
     final normalized = RecorderConfig.normalizeMaxRetryCount(v);
@@ -184,7 +171,6 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 更新重试等待时间
   /// =====================================
   Future<void> updateRetryDelay(int v) async {
     final normalized = RecorderConfig.normalizeRetryDelay(v);
@@ -193,7 +179,6 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 更新开播检测间隔
   /// =====================================
   Future<void> updateLiveCheckInterval(int v) async {
     final normalized = RecorderConfig.normalizeLiveCheckInterval(v);
@@ -202,7 +187,6 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 更新最大检测间隔
   /// =====================================
   Future<void> updateMaxCheckInterval(int v) async {
     final normalized = RecorderConfig.normalizeMaxCheckInterval(v);
@@ -211,31 +195,18 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 更新挂机检测
   /// =====================================
-  ///
-  /// enablePolling 使用 hiveBool() 后，
-  /// 修改 value 会自动保存到 Hive。
-  ///
-  /// 保留这个方法是为了兼容现有 UI 调用。
   Future<void> updateEnablePolling(bool v) async {
     enablePolling.value = v;
   }
 
   /// =====================================
-  /// 更新指数退避
   /// =====================================
-  ///
-  /// enableBackoff 使用 hiveBool() 后，
-  /// 修改 value 会自动保存到 Hive。
-  ///
-  /// 保留这个方法是为了兼容现有 UI 调用。
   Future<void> updateEnableBackoff(bool v) async {
     enableBackoff.value = v;
   }
 
   /// =====================================
-  /// 选择录制目录
   /// =====================================
   Future<void> pickRecordDir() async {
     if (isClosed || selectingRecordDirectory.value) return;
@@ -243,6 +214,16 @@ class RecordSettingsController extends GetxController {
     try {
       final selected = (await _directoryPicker())?.trim() ?? '';
       if (selected.isEmpty || isClosed) return;
+      // The picker hands back a public path (Downloads/Documents). Android 11+
+      // only lets a raw File write there once "All files access" is granted;
+      // the write probe below would otherwise die with EACCES and the user
+      // would see nothing but a generic "path or permission" error. This is a
+      // direct user gesture, so the permission surface belongs here, not only
+      // at recording start. The request is a no-op true off Android.
+      if (!await _storagePermission()) {
+        if (!isClosed) ToastUtil.show(i18n('no_storage'));
+        return;
+      }
       // Startup may still be persisting the default folder. Let that older
       // operation settle so this explicit choice is always committed last.
       await _storageInitialization;
@@ -291,19 +272,12 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 更新优先最高画质
   /// =====================================
-  ///
-  /// preferBestStream 使用 hiveBool() 后，
-  /// 修改 value 会自动保存到 Hive。
-  ///
-  /// 保留这个方法是为了兼容现有 UI 调用。
   Future<void> updatePreferBestStream(bool v) async {
     preferBestStream.value = v;
   }
 
   /// =====================================
-  /// 更新读写超时
   /// =====================================
   Future<void> updateRwTimeout(int v) async {
     final normalized = RecorderConfig.normalizeRwTimeout(v);
@@ -312,7 +286,6 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 更新缓冲队列大小
   /// =====================================
   Future<void> updateThreadQueueSize(int v) async {
     final normalized = RecorderConfig.normalizeThreadQueueSize(v);
@@ -321,7 +294,6 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 更新后台自动启动
   /// =====================================
 
   Future<void> updateAutoStartOnBoot(bool v) async {
@@ -329,7 +301,6 @@ class RecordSettingsController extends GetxController {
   }
 
   /// =====================================
-  /// 更新文件夹命名策略
   /// =====================================
 
   Future<void> updateUsePinyinForFolder(bool v) async {

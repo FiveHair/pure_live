@@ -30,7 +30,6 @@ class DouyuSite
         LivePlayUrlCursorResolver,
         LivePlayLeaseMetadata,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     final path = Uri.encodeComponent(id);
@@ -99,8 +98,6 @@ class DouyuSite
       subCateList.where((x) => x["cate1Id"] == cate1Id).forEach((element) {
         subCategories.add(
           LiveArea(
-            // `icon` 可能是空的（上游样本 S01-cate-list-2026-10：辐射：避难所Online），
-            // 依次退到 `smallIcon`、`pic`，否则分区在列表里没有图。
             areaPic: _areaPicture(element),
             areaId: element["cate2Id"].toString(),
             typeName: cate1Name.toString(),
@@ -117,7 +114,6 @@ class DouyuSite
     return categories;
   }
 
-  /// 分区图标：`icon` 空时退到 `smallIcon`，再退到 `pic`。
   static String _areaPicture(dynamic area) {
     if (area is! Map) return '';
     for (final key in const ['icon', 'smallIcon', 'pic']) {
@@ -344,7 +340,12 @@ class DouyuSite
     final appliedRate = rawRate is num && rawRate.isFinite && rawRate == rawRate.roundToDouble()
         ? rawRate.toInt()
         : int.tryParse(rawRate?.toString().trim() ?? '');
-    final url = parsePlayUrl(playData);
+    var url = parsePlayUrl(playData);
+    // 海外/部分匿名会话会拿到 5 分钟即失效的 ws CDN 线（expire=300&fcdn=ws）；
+    // 附加 expire=0 让 CDN 按默认时长签发（simple_live 同款补丁）。
+    if (url.contains('expire=300') && url.contains('fcdn=ws')) {
+      url = '$url&expire=0';
+    }
     _rememberIssued(url, issuedAt);
     return LivePlayUrlResolution(
       urls: List<String>.unmodifiable([url]),
@@ -605,12 +606,10 @@ class DouyuSite
       platform: PlatformIds.douyu,
       link: "https://www.douyu.com/$roomId",
       isRecord: replay,
-      // 在播时 `show_time`（Unix 秒）就是这场直播的开播时间（上游 douyu 4-x）。
       startedAt: live ? _startedAt(roomInfo['show_time']) : null,
     );
   }
 
-  /// 斗鱼的 `show_time`：Unix 秒；读不出来或超出 2000–2100 年就不给。
   static DateTime? _startedAt(Object? value) {
     final seconds = _asInt(value);
     if (seconds == null || seconds <= 0) return null;
