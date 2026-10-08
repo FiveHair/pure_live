@@ -258,6 +258,9 @@ jobs:
         shell: bash
         run: |
           set -e
+          # CPF 适配仓库内有超长路径（Windows 默认 260 限制会让 pub get 的
+          # git 克隆失败：Filename too long）
+          git config --global core.longpaths true
           for i in 1 2 3; do
             git clone --depth 1 https://github.com/liuchuancong/media_core.git "$RUNNER_TEMP/media_core" && break
             sleep 15
