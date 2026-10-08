@@ -12,7 +12,66 @@ import 'package:pure_live/get/get.dart' show RxBool;
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 
+/// Windows 小窗置顶修复：恢复普通窗口时同步 z-order。
+///
+/// [Win32PipWindow.restore] 回放进入小窗前捕获的 ex-style 位，但
+/// "总在最前"是 SetWindowPos 的 z-order 位置，不是样式位——小窗期间
+/// 打开置顶再退出小窗，样式位虽回到非置顶值，窗口本身仍留在置顶带，
+/// 主窗口于是一直压在所有窗口上面。这里在快照回放后按快照记录的
+/// 置顶状态补一次真正的 z-order 同步。
+class _TopmostSyncingPipWindow implements PipWindow {
+  _TopmostSyncingPipWindow(this._inner);
+
+  final PipWindow _inner;
+
+  @override
+  Future<PipWindowSnapshot> capture() => _inner.capture();
+
+  @override
+  Future<void> applySmallWindow({
+    required Size size,
+    required Offset position,
+    required double? aspectRatio,
+    required bool alwaysOnTop,
+    required bool resizable,
+    required bool skipTaskbar,
+    required String title,
+  }) {
+    return _inner.applySmallWindow(
+      size: size,
+      position: position,
+      aspectRatio: aspectRatio,
+      alwaysOnTop: alwaysOnTop,
+      resizable: resizable,
+      skipTaskbar: skipTaskbar,
+      title: title,
+    );
+  }
+
+  @override
+  Future<void> restore(PipWindowSnapshot snapshot) async {
+    await _inner.restore(snapshot);
+    // 快照记录的是进入小窗前的置顶状态；恢复它而不是保留小窗期间的
+    // 置顶设置（[Win32PipWindow.setAlwaysOnTop] 走 SetWindowPos，能把
+    // 窗口真正移出置顶带）。
+    await _inner.setAlwaysOnTop(snapshot.alwaysOnTop);
+  }
+
+  @override
+  Future<void> setAlwaysOnTop(bool value) => _inner.setAlwaysOnTop(value);
+
+  @override
+  Future<void> setMinimumSize(Size size) => _inner.setMinimumSize(size);
+
+  @override
+  Future<void> setAspectRatio(double aspectRatio) => _inner.setAspectRatio(aspectRatio);
+
+  @override
+  Future<void> startDragging() => _inner.startDragging();
+}
+
 final DisplayAwarePipWindow windowsPipWindow = DisplayAwarePipWindow(
+  windowBuilder: () => _TopmostSyncingPipWindow(defaultDesktopPipWindow()),
   workAreasReader: _readWorkAreas,
   readSavedBounds: _readSavedBounds,
   writeSavedBounds: _writeSavedBounds,

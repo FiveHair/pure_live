@@ -222,13 +222,17 @@ jobs:
           $ErrorActionPreference = "Stop"
           $certBase64 = "$env:CERTIFICATE".Trim() -replace '\s+', ''
           if ([string]::IsNullOrEmpty($certBase64)) {
-            Write-Error "CERTIFICATE secret is empty!"
+            Write-Warning "CERTIFICATE secret is empty; skipping MSIX signing."
+            "HAS_MSIX_CERT=false" >> $env:GITHUB_ENV
+            return
           }
+          "HAS_MSIX_CERT=true" >> $env:GITHUB_ENV
           $certBytes = [System.Convert]::FromBase64String($certBase64)
           $certPath = Join-Path (Get-Location) "certificate.pfx"
           [IO.File]::WriteAllBytes($certPath, $certBytes)
           "FINAL_CERT_PATH=$certPath" >> $env:GITHUB_ENV
       - name: Update MSIX make_config.yaml
+        if: env.HAS_MSIX_CERT == 'true'
         shell: pwsh
         env:
           CERT_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
@@ -280,9 +284,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          $targets = "exe"
+          if ("$env:HAS_MSIX_CERT" -eq "true") { $targets = "exe,msix" }
           fastforge package `
             --platform windows `
-            --targets exe,msix
+            --targets $targets
       - name: Locate Windows release bundle
         id: bundle
         shell: pwsh
@@ -349,10 +355,11 @@ jobs:
           Copy-Item $exeFile.FullName "PureLive-$version-windows-x64-setup.exe" -Force
 
           $msixFile = Get-ChildItem $distDir -Recurse -Filter "*.msix" | Select-Object -First 1
-          if (!$msixFile) {
-            Write-Error "Windows MSIX package not found."
+          if ($msixFile) {
+            Copy-Item $msixFile.FullName "PureLive-$version-windows-x64.msix" -Force
+          } else {
+            Write-Warning "Windows MSIX package not found (unsigned build); skipping."
           }
-          Copy-Item $msixFile.FullName "PureLive-$version-windows-x64.msix" -Force
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
