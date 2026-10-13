@@ -1,13 +1,8 @@
 name: Build HarmonyOS (ohos)
 
+# 仅手动触发（workflow_dispatch）
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - ohos-support
-    paths-ignore:
-      - '**.md'
-      - '.gitignore'
 
 env:
   FLUTTER_OHOS_BRANCH: oh-3.47.4-dev

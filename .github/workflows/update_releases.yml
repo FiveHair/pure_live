@@ -1,11 +1,8 @@
 name: 手动更新历史发布数据
 
+# 仅手动触发（workflow_dispatch）
 on:
   workflow_dispatch:
-
-  schedule:
-    # 每 48 小时执行一次
-    - cron: '0 0 */2 * *'
 
 permissions:
   contents: read
