@@ -1,11 +1,12 @@
 import 'dart:math';
 
+import 'huya_vip_room_id.dart';
 import 'huya_request_params.dart';
 
 import 'package:pure_live/core/tars/types.dart';
-import 'package:pure_live/core/tars/game_event_message_board_panel.dart';
 import 'package:pure_live/core/models/live_message.dart';
 import 'package:pure_live/core/tars/base_tars_http.dart';
+import 'package:pure_live/core/tars/game_event_message_board_panel.dart';
 import 'package:pure_live/core/tars/get_game_event_message_board_rsp.dart';
 import 'package:pure_live/core/tars/get_game_event_message_board_req.dart';
 
@@ -15,6 +16,8 @@ int rotl64(int t) {
   final high = t & ~0xFFFFFFFF;
   return high | rotatedLow;
 }
+
+bool isVipRoom(String roomId) => huyaVipRoomIds.contains(roomId);
 
 BaseTarsHttp createHuyaMessageBoardClient() {
   // This endpoint is auxiliary to playback. Do not inherit the legacy TARS
@@ -40,7 +43,7 @@ Future<List<LiveSuperChatMessage>> getHuyaSuperChatMessageList({
     ..lPid = lPid
     ..tId = userId
     ..iMessageBoardScope = 0
-    ..iPageSize = 10;
+    ..iPageSize = 50;
   final GetGameEventMessageBoardRsp rsp;
   try {
     rsp = await messageBoardClient
@@ -52,12 +55,14 @@ Future<List<LiveSuperChatMessage>> getHuyaSuperChatMessageList({
     messageBoardClient.dio.close(force: true);
   }
   final messages = huyaSuperChatsFromPanel(rsp.tMessageBoardPanel);
-  if (first || messages.isEmpty) {
-    return messages;
-  } else {
-    messages.sort((a, b) => a.startTime.compareTo(b.startTime));
-    return [messages.last];
+  // 最新在前(按 startTime 逆序);上游注释:虎牙按 money→level→countDown
+  // 排序,这里统一调整为时间序,见 dart_simple_live #157 的说明。
+  messages.sort((a, b) => b.startTime.compareTo(a.startTime));
+  if (first) {
+    // 首次拉起只保留最新 10 条,避免一次铺满弹幕区。
+    return messages.length > 10 ? messages.sublist(0, 10) : messages;
   }
+  return messages.isEmpty ? messages : [messages.first];
 }
 
 List<LiveSuperChatMessage> huyaSuperChatsFromPanel(GameEventMessageBoardPanel panel, {DateTime? now}) {

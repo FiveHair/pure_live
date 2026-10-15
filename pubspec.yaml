@@ -1,7 +1,7 @@
-﻿name: pure_live
+name: pure_live
 description: 纯粹直播,一款开源的第三方多平台直播聚合播放器.
 publish_to: none
-version: 3.1.18+4107
+version: 3.1.19+4108
 
 environment:
   sdk: ^3.13.0
@@ -116,95 +116,97 @@ dependencies:
   wakelock_plus: ^1.3.3 # 与 media_core_media_kit 的引擎依赖链对齐
   #
   # media_core 从本地绝对路径 (F:/media_core/...) 改成 git 依赖, 统一指向
-  # https://github.com/liuchuancong/media_core 的同一个提交 5b04714。换机器、CI 和
+  # https://github.com/liuchuancong/media_core 的同一个提交 2050b419。换机器、CI 和
   # 别人 clone 之后都不再依赖本机目录布局。
   #
   # 17 个子包共用同一个 url/ref, 只有子目录不同。各写一份 url/ref 迟早会漂移
   # 成"两个仓库版本混用", 所以这里宁可重复也保持一致。
+  # 只被传递依赖、本 app 不直接 import 的两个 (media_core_memory /
+  # media_core_win32) 在下面的 dependency_overrides 里钉同一个 ref。
   media_core:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core
   media_core_media_kit:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_media_kit
   media_core_ui:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_ui
   media_core_pip:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_pip
   media_core_fullscreen:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_fullscreen
   media_core_multiview:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_multiview
   media_core_ingest:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_ingest
   media_core_presentation:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_presentation
   media_core_floating:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_floating
   media_core_list_playback:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_list_playback
   media_core_feed:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_feed
   media_core_ijk_player:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_ijk_player
   media_core_better_player:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_better_player
   media_core_danmaku:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_danmaku
   media_core_mediasession:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_mediasession
   media_core_live:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_live
   media_core_logging:
     git:
       url: https://github.com/liuchuancong/media_core
-      ref: 5b047145422758d983a3724e689d8aa4b7d06863
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
       path: packages/media_core_logging
 
   # -------------------------- 数据存储/数据库 --------------------------
@@ -287,6 +289,20 @@ dependency_overrides:
   hooks: ^2.2.0 # Native Assets 构建 hooks 兼容
   code_assets: ^2.1.0 # media_kit Native Assets 2 and FFmpeg hook compatibility
   xml: ^7.0.1 # webdav_client xml7兼容盖
+  # media_core 的传递依赖, 但本 app 不直接 import: 那些子包的 pubspec 里写的是
+  # `^0.1.0` (media_core_pip 里的 media_core_win32 就是这样), 不覆盖就会从
+  # pub.dev 解析 —— 同一个 app 里于是混用两个仓库版本。钉回 media_core 仓库的
+  # 同一个提交, 与上面 dependencies 里的 17 个保持同一 ref。
+  media_core_memory:
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
+      path: packages/media_core_memory
+  media_core_win32:
+    git:
+      url: https://github.com/liuchuancong/media_core
+      ref: a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
+      path: packages/media_core_win32
 
 
 # 开发依赖

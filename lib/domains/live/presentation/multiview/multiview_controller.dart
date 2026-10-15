@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'dart:io';
 
 import 'package:pure_live/core/index.dart';
 import 'package:flame_barrage/flame_barrage.dart';
@@ -118,6 +119,7 @@ class MultiviewController extends GetxController {
       if (recipe != null) {
         return MultiviewStreamSource.owned(
           source: bindOwnedInput(recipe),
+          detail: detail,
           qualities: choices,
           qualityIndex: appliedIndex < 0 ? qualityIndex : appliedIndex,
         );
@@ -126,6 +128,7 @@ class MultiviewController extends GetxController {
       return MultiviewStreamSource(
         url: nextUrls.first,
         headers: Map.unmodifiable(headers),
+        detail: detail,
         lines: List.unmodifiable(nextUrls),
         qualities: choices,
         qualityIndex: appliedIndex < 0 ? qualityIndex : appliedIndex,
@@ -141,6 +144,7 @@ class MultiviewController extends GetxController {
     if (owned != null) {
       return MultiviewStreamSource.owned(
         source: owned,
+        detail: detail,
         qualities: initial.qualities,
         qualityIndex: initial.qualityIndex,
         qualityLoader: loadQuality,
@@ -149,6 +153,7 @@ class MultiviewController extends GetxController {
     return MultiviewStreamSource(
       url: initial.url,
       headers: initial.headers,
+      detail: detail,
       qualities: initial.qualities,
       qualityIndex: initial.qualityIndex,
       qualityLoader: loadQuality,
@@ -322,6 +327,7 @@ class MultiviewController extends GetxController {
     _rxWorkers.add(
       everAll([danmakuEnabled, layout, focusedCellIndex, _audioFocusIndex], (_) => unawaited(_syncDanmakuSession())),
     );
+    _rxWorkers.add(debounce(cells, (_) => unawaited(_syncDanmakuSession()), time: const Duration(milliseconds: 250)));
     _rxWorkers.add(ever(smallCellsLowQuality, (_) => unawaited(_reconcileSmallCellQualities())));
     danmakuEnabled.value = !SettingsService.to.danmaku.hideDanmaku.v;
     _rxWorkers.add(ever(danmakuEnabled, (enabled) => SettingsService.to.danmaku.hideDanmaku.value = !enabled));
@@ -363,6 +369,7 @@ class MultiviewController extends GetxController {
       if (room == null || platform == null || !MultiviewDanmakuSession.isSupportedPlatform(platform)) {
         _retargetDanmakuLayer(null);
         await _danmakuSession.disconnect();
+        _danmakuResyncAttempts = 0;
         return;
       }
       final ready = await _danmakuReadyRoom(room);
@@ -370,10 +377,16 @@ class MultiviewController extends GetxController {
       if (!MultiviewDanmakuSession.supportsRoom(ready)) {
         _retargetDanmakuLayer(null);
         await _danmakuSession.disconnect();
+        _scheduleDanmakuResync(token);
         return;
       }
       _retargetDanmakuLayer(ready.identityKey);
       await _danmakuSession.connect(ready);
+      if (token == _danmakuSyncEpoch && !_danmakuSession.isConnected) {
+        _scheduleDanmakuResync(token);
+        return;
+      }
+      _danmakuResyncAttempts = 0;
     } catch (error, stackTrace) {
       developer.log(
         'MultiviewController: danmaku session sync failed',
@@ -381,7 +394,21 @@ class MultiviewController extends GetxController {
         error: error,
         stackTrace: stackTrace,
       );
+      _scheduleDanmakuResync(token);
     }
+  }
+
+  int _danmakuResyncAttempts = 0;
+
+  void _scheduleDanmakuResync(int token) {
+    if (_closed || isClosed) return;
+    if (_danmakuResyncAttempts >= 3) return;
+    _danmakuResyncAttempts++;
+    Future<void>.delayed(const Duration(seconds: 3), () {
+      if (_closed || isClosed) return;
+      if (token != _danmakuSyncEpoch) return;
+      unawaited(_syncDanmakuSession());
+    });
   }
 
   void _retargetDanmakuLayer(String? key) {
@@ -698,6 +725,10 @@ class MultiviewController extends GetxController {
 
   Future<void> _assignWallCell(int cellIndex, LiveRoom targetRoom, MultiviewStreamSource source) async {
     _sourceContexts[cellIndex] = source;
+    final detail = source.detail;
+    if (detail != null) {
+      _updateCell(cellIndex, cells[cellIndex].copyWith(room: detail.fillFromDetail(targetRoom)));
+    }
     final roomVolume = _roomVolumeLoader(targetRoom).clamp(0.0, 1.0);
     _volumes[cellIndex] = roomVolume;
     try {
@@ -745,7 +776,9 @@ class MultiviewController extends GetxController {
     final holdsAudio =
         !allMuted.value && (layout.value != MultiviewLayout.focus || cellIndex == focusedCellIndex.value);
     final metadata = <String, Object?>{
-      OpenVolume.metadataKey: holdsAudio ? roomVolume : 0.0,
+      // 手机端滑杆控制的是系统音量,音频格增益恒定 1.0(与单房间一致,
+      // 否则房间记忆音量会静默减半实际响度);桌面端保留各格记忆音量。
+      OpenVolume.metadataKey: holdsAudio ? (Platform.isAndroid || Platform.isIOS ? 1.0 : roomVolume) : 0.0,
       if (owned != null) kMediaKitCustomInputKey: customInputMetadataOf(owned),
     };
     return wall.MultiviewCellSource(
