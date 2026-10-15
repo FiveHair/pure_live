@@ -79,8 +79,8 @@ jobs:
             sleep 15
           done
           # 锁定到上游 pure_live 依赖的同一提交（HEAD 会漂移，pubspec 结构可能变化）
-          git -C "$RUNNER_TEMP/media_core" fetch --depth 1 origin 5b047145422758d983a3724e689d8aa4b7d06863
-          git -C "$RUNNER_TEMP/media_core" checkout 5b047145422758d983a3724e689d8aa4b7d06863
+          git -C "$RUNNER_TEMP/media_core" fetch --depth 1 origin a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
+          git -C "$RUNNER_TEMP/media_core" checkout a13f5c15f90f0180a93a2ab539ea82ef55a7f7fd
           for i in 1 2 3; do
             git clone https://github.com/Predidit/media-kit.git "$RUNNER_TEMP/media-kit-predidit" && break
             sleep 15
