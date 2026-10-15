@@ -93,6 +93,10 @@ class LivePlayHeader extends StatelessWidget implements PreferredSizeWidget {
 
   Widget _buildRecordButton() {
     return Obx(() {
+      // 录制总开关关闭时隐藏直播间录制入口
+      if (!SettingsService.to.app.enableRecorder.v) {
+        return const SizedBox.shrink();
+      }
       final room = controller.state.value.room.detail;
       return RecordActionButton(
         room: room,

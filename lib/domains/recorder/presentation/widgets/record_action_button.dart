@@ -104,6 +104,7 @@ class _RecordActionButtonState extends State<RecordActionButton> {
   }
 
   Future<void> _handlePressed(BuildContext context, LiveRoom liveroom) async {
+    if (!SettingsService.to.app.enableRecorder.v) return;
     if (_busy) return;
     setState(() => _busy = true);
     try {

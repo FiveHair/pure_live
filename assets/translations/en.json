@@ -500,6 +500,8 @@
   "quality_limited_to": "The platform returned {quality}; playback now matches the actual quality",
   "quality_stream_unchanged": "The platform returned the current stream for that option, so the current quality was kept",
   "record": "Record",
+  "enable_recorder_module": "Recorder",
+  "enable_recorder_module_desc": "Hide all recording entries and stop recording tasks & live monitoring when off",
   "record_cache_limit_invalid": "Enter a whole number greater than zero",
   "record_center": "Record Center",
   "record_completed": "Completed",

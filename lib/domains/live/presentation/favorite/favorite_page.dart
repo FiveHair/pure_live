@@ -18,6 +18,9 @@ class FavoritePage extends GetView<FavoriteController> {
       builder: (context, constraint) {
         return Obx(() {
           bool showAction = Get.width <= 680;
+          // 窄窗口/方形折叠屏：AppBar 三个状态 Tab 等分布局放不下会
+          // RenderFlex 溢出；改为按内容宽度排布并允许横向滚动
+          final narrowTitle = constraint.maxWidth < 420;
           final availableSitesList = controller.availableFavoriteSites;
           final siteKey = ValueKey(availableSitesList.map((e) => e.id).join('|'));
 
@@ -29,14 +32,22 @@ class FavoritePage extends GetView<FavoriteController> {
               title: ScrollableTabBar(
                 key: const ValueKey('favorite-status-tabs'),
                 controller: controller.tabController,
-                isScrollable: false,
+                isScrollable: narrowTitle,
                 tabAlignment: TabAlignment.center,
+                labelPadding: narrowTitle
+                    ? const EdgeInsets.symmetric(horizontal: 8)
+                    : const EdgeInsets.symmetric(horizontal: 16),
                 physics: const PureLiveBoundedScrollPhysics(),
-                tabs: [
-                  Tab(text: i18n("online_room_title")),
-                  Tab(text: i18n("recording_room_title")),
-                  Tab(text: i18n("offline_room_title")),
-                ],
+                tabs: SettingsService.to.app.enableRecorder.v
+                    ? [
+                        Tab(text: i18n("online_room_title")),
+                        Tab(text: i18n("recording_room_title")),
+                        Tab(text: i18n("offline_room_title")),
+                      ]
+                    : [
+                        Tab(text: i18n("online_room_title")),
+                        Tab(text: i18n("offline_room_title")),
+                      ],
               ),
             ),
             body: _FavoriteSiteTabs(key: siteKey, controller: controller, availableSitesList: availableSitesList),

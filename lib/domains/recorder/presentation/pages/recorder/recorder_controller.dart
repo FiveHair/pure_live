@@ -1276,6 +1276,20 @@ class RecorderController extends GetxService {
     });
   }
 
+  /// 录制总开关被关闭时停掉全部进行中的任务（UI 隐藏入口外的兜底）
+  Future<void> stopAllWhenDisabled() async {
+    if (_isClosing) return;
+    final active = tasks
+        .where((t) => t.status == RecordStatus.queued ||
+            t.status == RecordStatus.preparing ||
+            t.status == RecordStatus.running ||
+            t.status == RecordStatus.reconnecting)
+        .toList();
+    for (final task in active) {
+      await stopTask(task);
+    }
+  }
+
   Future<void> stopTask(LiveRecordTask task) {
     if (_isClosing || !_ownsTask(task)) return Future.value();
     _cancelUserStart(task.taskId);
@@ -1502,6 +1516,10 @@ class RecorderController extends GetxService {
   }
 
   Future<void> restoreAndAutoPoll() {
+    // 录制总开关关闭时不恢复任务与开播监控
+    if (!SettingsService.to.app.enableRecorder.v) {
+      return _restoreInFlight ?? Future<void>.value();
+    }
     if (_isClosing) return Future<void>.value();
     final existing = _restoreInFlight;
     if (existing != null) return existing;

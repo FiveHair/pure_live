@@ -563,6 +563,11 @@ class LivePlayContent extends StatelessWidget {
 
   Widget _buildNormalView(BuildContext context) {
     final compactHeader = MediaQuery.sizeOf(context).width < 600;
+    // 方形折叠屏外屏：竖屏直播源的视频高度会吃掉几乎整个屏，剩余空间
+    // 塞不下弹幕区反而 RenderFlex 溢出——直接隐藏视频下方的整块面板。
+    // 全屏走独立布局，不受此影响。
+    final mqSize = MediaQuery.sizeOf(context);
+    final squareLikeDisplay = mqSize.shortestSide / mqSize.longestSide > 0.9;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -582,7 +587,7 @@ class LivePlayContent extends StatelessWidget {
             video: LivePlayVideo(controller: controller, expandToParent: useAdaptivePortraitFrame),
             resolution: ResolutionsRow(controller: controller),
             danmaku: _buildDanmaku(),
-            showPanel: controller.site != Sites.iptvSite,
+            showPanel: controller.site != Sites.iptvSite && !squareLikeDisplay,
             isPortraitSource: isPortrait,
             sourceAspectRatio: manager.currentPresentationAspectRatio,
             adaptivePortraitHeight: settings.enablePortraitStreamAdaptation.v && settings.portraitAdaptiveHeight.v,
